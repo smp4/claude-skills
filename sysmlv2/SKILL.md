@@ -42,6 +42,10 @@ This ensures latest examples available. Takes ~5 seconds.
   - `automator/` - Automation examples (Excel, type checking, mass rollup)
   - `modeler/` - Modeling patterns
 - **MBSE 2025 Weilkiens metadata examples**: `~/.claude/skills/sysmlv2/examples/community/mbse2025_weilkiens_metadata`
+- **SantosLab HAMR SysMLv2/AADL models**: `~/.claude/skills/sysmlv2/examples/community/sysmlv2-models`
+  - AADL concepts modeled in SysMLv2 (RTESC working group library definitions)
+  - Example models using AADL concepts, syntax reference, SysML-AADL libraries
+  - Targets safety-critical platforms via HAMR toolchain
 - **Sensmetry forum**: https://forum.sensmetry.com/ (web forum, not cloned)
 - **SysML forum**: https://groups.google.com/g/sysmlforum (Google Group, not cloned)
 
