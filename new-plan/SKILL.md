@@ -254,10 +254,19 @@ If a GitHub remote exists, offer this path. Create an issue using the
 3. Create the issue with appropriate labels
 
 ```bash
+# Ensure required labels exist in the repo (create if missing)
+for label in "claude" "spec" "plan" "ready-for-implementation"; do
+  gh label list --json name --jq '.[].name' | grep -qx "$label" \
+    || gh label create "$label" --color "#0075ca" --force
+done
+
 gh issue create \
   --title "[Feature Spec] <feature-name>" \
   --body-file /tmp/issue-body.md \
   --label "claude,spec,plan,ready-for-implementation"
+
+# Verify labels were applied
+gh issue view <issue-number> --json labels --jq '.labels[].name'
 ```
 
 **Issue body structure**:

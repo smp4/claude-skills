@@ -402,16 +402,32 @@ if [ -f VERIFICATION.md ]; then
   cat VERIFICATION.md >> /tmp/pr-body.md
 fi
 
-gh pr create \
+# If source was a GH issue, fetch its labels and apply to PR
+# Step 1: get labels from source issue
+ISSUE_LABELS=$(gh issue view <ISSUE_NUMBER> --json labels --jq '.labels[].name' | tr '\n' ',' | sed 's/,$//')
+
+# Step 2: build label flags (one --label per value)
+LABEL_FLAGS=""
+if [ -n "$ISSUE_LABELS" ]; then
+  while IFS=',' read -ra LBLS; do
+    for lbl in "${LBLS[@]}"; do
+      LABEL_FLAGS="$LABEL_FLAGS --label \"$lbl\""
+    done
+  done <<< "$ISSUE_LABELS"
+fi
+
+# Step 3: create PR with labels
+eval gh pr create \
   --title "feat(${FEATURE_SLUG}): [feature name]" \
   --body-file /tmp/pr-body.md \
-  --base "$BASE_BRANCH"
+  --base "$BASE_BRANCH" \
+  $LABEL_FLAGS
 ```
 
-PR body should include: summary, spec reference (GH issue link or docs
-path), implementation units checklist, doc updates, verification status,
-and test results. If the source was a GH issue, add "Closes #N" and
-apply labels. VERIFICATION.md content is appended after a `---` divider.
+PR body must include: summary, "Closes #N" (if GH issue source), spec
+reference, implementation units checklist, doc updates, verification
+status, and test results. VERIFICATION.md is appended after `---`.
+
 
 #### Path B — Commit only (no GitHub)
 
