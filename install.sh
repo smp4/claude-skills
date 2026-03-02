@@ -19,7 +19,7 @@ set -euo pipefail
 
 SKILLS_DIR="${HOME}/.claude/skills"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-SKILL_DIRS=("new-plan" "new-task" "shared")
+SKILL_DIRS=("new-plan" "new-task" "shared" "sysmlv2")
 
 MODE="symlink"
 if [[ "${1:-}" == "--copy" ]]; then
