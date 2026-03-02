@@ -393,6 +393,15 @@ Ready to submit?
 
 ```bash
 git push -u origin "$BRANCH_NAME"
+
+# Append VERIFICATION.md to PR body if it exists
+if [ -f VERIFICATION.md ]; then
+  echo "" >> /tmp/pr-body.md
+  echo "---" >> /tmp/pr-body.md
+  echo "" >> /tmp/pr-body.md
+  cat VERIFICATION.md >> /tmp/pr-body.md
+fi
+
 gh pr create \
   --title "feat(${FEATURE_SLUG}): [feature name]" \
   --body-file /tmp/pr-body.md \
@@ -402,7 +411,7 @@ gh pr create \
 PR body should include: summary, spec reference (GH issue link or docs
 path), implementation units checklist, doc updates, verification status,
 and test results. If the source was a GH issue, add "Closes #N" and
-apply labels.
+apply labels. VERIFICATION.md content is appended after a `---` divider.
 
 #### Path B — Commit only (no GitHub)
 
