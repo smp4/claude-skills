@@ -85,7 +85,8 @@ gh label create calude --description "Written by Claude" --color 0e8a75 2>/dev/n
 ### After creation
 
 1. Report the issue URL and number to the user
-2. Tell the user to run `/new-task <issue-number>` to begin execution
+2. Remind the user they can run `/new-task <issue-number>` when ready
+3. **STOP. Do NOT begin implementation or invoke `/new-task`.**
 
 ## Path B — Local docs directory
 

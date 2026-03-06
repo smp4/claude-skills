@@ -223,10 +223,14 @@ Present the user with a concise approval summary:
 - SPEC.md (specification — source of truth)
 - PLAN.md (implementation plan with unit breakdown)
 
-### Next step
-Run `/new-task` to pick up units from this plan and execute them.
+### Handoff options
+Once approved, I will:
+1. Write SPEC.md + PLAN.md to `docs/<feature-slug>/` **and** create a GitHub issue (if available)
+2. Write SPEC.md + PLAN.md to `docs/<feature-slug>/` only (no issue)
 
-**Do you approve this for handoff?**
+When you're ready to implement, run `/new-task` to pick up units from this plan.
+
+**Do you approve this for handoff? Which option do you prefer (1 or 2)?**
 If you want changes, tell me what to adjust and we'll revisit the
 relevant phase.
 ```
@@ -235,8 +239,8 @@ relevant phase.
 
 ### 3b — Handoff: GitHub issue or local docs
 
-Ask the user which handoff path they prefer. If they've already stated a
-preference, use it.
+Use the option the user chose in 3a. **Always write docs locally (Path B).
+If the user also chose option 1, additionally create a GitHub issue (Path A).**
 
 #### Path A — GitHub issue (when repo is available)
 
@@ -316,12 +320,15 @@ If no GitHub remote is detected, or the user prefers local packaging:
 
 ### Handoff rules
 
+- **Always write SPEC.md and PLAN.md to `docs/<feature-slug>/` (Path B is mandatory).**
 - If using GitHub, check that `gh` CLI is authenticated before attempting
-  issue creation. If it fails, fall back to Path B.
+  issue creation. If it fails, skip the issue and inform the user.
 - Tag the handoff in the progress checklist:
   ```
   - [x] Phase 3: Approved by user. Handed off via [GH issue #N / docs/<feature-slug>/]
   ```
+- **STOP after handoff. Do NOT begin implementation. Do NOT invoke `/new-task`.**
+  Tell the user: "Plan complete. Run `/new-task` when you're ready to implement."
 
 ---
 
