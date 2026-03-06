@@ -269,17 +269,19 @@ gh issue create \
 gh issue view <issue-number> --json labels --jq '.labels[].name'
 ```
 
-**Issue body structure**:
+**Issue body structure** — embed the full file contents directly (do NOT use
+placeholder comments; paste the actual text of SPEC.md and PLAN.md):
+
 ```markdown
 ## Specification
 
-<!-- Contents of SPEC.md -->
+<full contents of SPEC.md pasted here>
 
 ---
 
 ## Implementation Plan
 
-<!-- Contents of PLAN.md -->
+<full contents of PLAN.md pasted here>
 
 ---
 

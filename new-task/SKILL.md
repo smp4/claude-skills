@@ -479,6 +479,14 @@ git worktree remove "$WORKTREE_PATH"
 git branch -d "$BRANCH_NAME"  # only if merged
 ```
 
+After the PR is merged, tell the user to delete the remote branch:
+
+```
+Once you've merged the PR, delete the remote branch to keep the repo clean:
+
+  git push origin --delete ${BRANCH_NAME}
+```
+
 ---
 
 ## Quick reference: When to go back
