@@ -12,9 +12,9 @@ When no `--lens` flag is provided, propose lenses based on artefact type:
 | PLAN.md with external deps | + resilience (stability patterns) | External deps need failure mode analysis |
 | PLAN.md with domain artefacts | + Kerr (module/team alignment) | Module structure should match discipline boundaries |
 | SPEC.md + PLAN.md | Beck (alignment), Farley (verification), architecture | Alignment + verification + architectural fitness |
-| Source code (greenfield) | Beck (four rules), Metz (OO design) | New code needs communication + clean object design |
-| Source code (modifying existing) | Feathers (seam safety, characterization) | Existing code needs safe change practices |
-| PR diff | Beck (simple design), Feathers (legacy safety) | PRs touch existing code and add new behaviour |
+| Source code (greenfield) | **Farley (mandatory)**, Beck (four rules), Metz (OO design) | Complexity management + communication + object design |
+| Source code (modifying existing) | **Farley (mandatory)**, Feathers (seam safety) | Complexity management + safe change practices |
+| PR diff | **Farley (mandatory)**, Beck (simple design), Feathers (legacy safety) | Complexity management + design + legacy safety |
 
 ### How to detect "modifying existing"
 
@@ -65,8 +65,8 @@ Map artefact types to persona modes:
 |---|---|---|---|---|---|
 | SPEC.md | Plan Review | Verification | — | — | Domain Review |
 | PLAN.md | Plan Review | ATDD Planning | — | Plan Review | Plan Review |
-| Source (new) | Code Review | Verification | — | Code Review | — |
-| Source (existing) | Code Review | — | Code Review (Legacy) | — | — |
+| Source (new) | Code Review | **Code Review (mandatory)** | — | Code Review | — |
+| Source (existing) | Code Review | **Code Review (mandatory)** | Code Review (Legacy) | — | — |
 | Source (existing) | — | — | Modifying Existing Code | — | — |
 
 ## Concept Lens Application

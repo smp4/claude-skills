@@ -55,11 +55,41 @@ What Farley would reject:
 **Heuristics**:
 - Start with acceptance criteria, not architecture
 - Write the acceptance test FIRST (outer red), then TDD the implementation (inner loop)
-- DSL method names come from the domain glossary, not developer vocabulary
-- Each acceptance test should read as a specification a domain expert could validate
-- Protocol driver selection: start with direct/in-process for fast feedback,
-  add HTTP driver when integration testing matters
+- DSL method names from the domain glossary, not developer vocabulary
 - One DSL interface per bounded context concept, not per technical component
+- Start with direct/in-process driver for fast feedback
+
+## Mode: Code Review
+
+Farley's tools for managing complexity, applied as review heuristics.
+These operate at every level — function, class, module, service.
+
+**Cohesion** — does each module do one thing?
+- Can you describe what this module does in one sentence without "and"?
+- If a requirement changes, does the change land in one module or scatter?
+- Are there functions/methods that don't relate to the module's core purpose?
+
+**Separation of Concerns** — can you change one concern without touching another?
+- Is business logic mixed with I/O, formatting, or framework plumbing?
+- Could you swap the persistence layer without rewriting domain logic?
+- Are cross-cutting concerns (logging, auth, validation) handled separately
+  from the behaviour they wrap?
+
+**Information Hiding** — does each module expose only what it must?
+- Are internal data structures leaking through public interfaces?
+- Would a change to an internal decision (data format, algorithm, storage)
+  require callers to change?
+- Are there public methods/functions that only one internal caller uses?
+
+**Coupling** — how much does changing one module force changes elsewhere?
+- High fan-in is OK if stable. High fan-out is fragile — too many dependencies.
+- Are modules coupled through shared mutable state?
+- Could this module be tested in isolation without mocking half the system?
+
+**Testability as design signal**:
+- If code is hard to test, it has a design problem — not a testing problem.
+- Difficulty writing a test means: too many responsibilities, hidden
+  dependencies, or leaky abstractions.
 
 ## Quick Reference Card
 
@@ -68,5 +98,7 @@ TRUST MODEL:   DSL contract + acceptance tests + all green + static analysis
 FOUR LAYERS:   spec → DSL → driver → SUT (swap driver, not spec)
 ATDD LOOP:     outer RED (acceptance) → inner RED/GREEN/REFACTOR (unit) → outer GREEN
 RELEASABILITY: always deployable, verified by test suite, not by inspection
+COMPLEXITY:    cohesion + separation of concerns + information hiding + loose coupling
+DESIGN SIGNAL: hard to test = design problem, not testing problem
 ANTI-PATTERN:  any code path not covered by an executable specification
 ```

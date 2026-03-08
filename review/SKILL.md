@@ -103,7 +103,13 @@ If the user says continue, proceed with the review on what exists.
 
 ### Step 2 — Determine lens(es)
 
-**Explicit mode** (`--lens <name>`): Load the specified persona file. Skip to Step 3.
+**Mandatory lens**: When reviewing **source code** (any language, new or existing),
+the **farley** lens always runs — it checks cohesion, separation of concerns,
+information hiding, and coupling. This is automatic and not optional. Other
+lenses are added on top.
+
+**Explicit mode** (`--lens <name>`): Load the specified persona file. For source
+code, Farley is added automatically if not already specified. Skip to Step 3.
 
 **Lazy mode** (no `--lens`): Examine the artefact type and propose relevant lenses.
 
@@ -114,10 +120,12 @@ Present the proposal:
 
 ```
 This is a [type] artefact. Relevant lenses:
+- **farley** — complexity management (mandatory for source code)
 - **beck** — [why relevant to this artefact]
-- **farley** — [why relevant to this artefact]
+- ...
 
-Which lenses should I apply? (comma-separated, or "all")
+Which additional lenses should I apply? (comma-separated, or "all")
+Farley lens runs automatically for source code.
 ```
 
 Wait for user selection before proceeding.
@@ -129,8 +137,8 @@ For each selected lens:
 2. For persona lenses, identify the relevant mode section for the artefact type:
    - SPEC.md → Farley "Verification", Beck "Plan Review", Kerr "Domain Review"
    - PLAN.md → Beck "Plan Review", Farley "ATDD Planning", Metz "Plan Review", Kerr "Plan Review"
-   - Source code (greenfield) → Beck "Code Review", Metz "Code Review"
-   - Source code (modifying existing) → Feathers "Code Review (Legacy)"
+   - Source code (greenfield) → Farley "Code Review" (mandatory), Beck "Code Review", Metz "Code Review"
+   - Source code (modifying existing) → Farley "Code Review" (mandatory), Feathers "Code Review (Legacy)"
 3. For concept lenses, apply the reference's checklist/framework to the artefact:
    - architecture → evaluate fitness functions, reversibility, dependency direction
    - resilience → evaluate external dependency failure modes, timeout/circuit breaker coverage
