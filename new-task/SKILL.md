@@ -23,8 +23,8 @@ happens in an isolated git worktree, even for small changes. Submission is via P
 
 ```
 /new-task #42                        # from GitHub issue
-/new-task docs/user-auth/            # from local docs directory
-/new-task docs/user-auth/ --unit 3   # specific unit only
+/new-task dev-docs/user-auth/            # from local docs directory
+/new-task dev-docs/user-auth/ --unit 3   # specific unit only
 ```
 
 The `$ARGUMENTS` value is parsed as:
@@ -165,7 +165,7 @@ Create a clean starting point:
 ```bash
 git commit --allow-empty -m "chore(${FEATURE_SLUG}): begin implementation
 
-Spec source: [GH issue #N / docs/<slug>/]
+Spec source: [GH issue #N / dev-docs/<slug>/]
 Plan: N units to implement"
 ```
 
@@ -352,8 +352,8 @@ Wait for user approval before applying.
 
 ### 4c+ — Domain drift check
 
-**When**: a DOMAIN.md exists (`docs/domain/DOMAIN.md` or
-`docs/domain/*/DOMAIN.md`) AND a DSL interfaces file exists
+**When**: a DOMAIN.md exists (`dev-docs/domain/DOMAIN.md` or
+`dev-docs/domain/*/DOMAIN.md`) AND a DSL interfaces file exists
 (`acceptance_tests/dsl/interfaces.py` or `acceptance-tests/dsl/interfaces.ts`).
 
 **Skip** if either file is missing.
@@ -463,7 +463,7 @@ cd -
 git merge "$BRANCH_NAME" --no-ff \
   -m "feat(${FEATURE_SLUG}): [feature name]
 
-Implements spec from docs/<slug>/
+Implements spec from dev-docs/<slug>/
 All acceptance criteria verified."
 ```
 
@@ -471,33 +471,43 @@ All acceptance criteria verified."
 
 Report the list of files created/modified and the verification status.
 
-### 5c — Artefact cleanup
+### 5c — Archive planning artefacts
 
-After submission, the code and tests are the living specification. Offer
-to clean up:
+After the PR is merged (or the commit lands on main), move the feature
+docs directory to `dev-docs/archive/`. This preserves them for reference
+without cluttering the active `dev-docs/` space.
 
-```
-The spec and plan have served their purpose. The GH issue / git history
-preserves them.
+**Wait for the user to confirm the PR is merged before running this step.**
 
-Would you like to:
-1. Clean up planning artefacts (delete SPEC.md, PLAN.md, VERIFICATION.md)
-2. Generate an ADR first, then clean up
-3. Keep everything as-is
-```
-
-**Option 1 — cleanup:**
 ```bash
-rm -f "docs/${FEATURE_SLUG}"/{SPEC,PLAN,VERIFICATION}.md
-rmdir "docs/${FEATURE_SLUG}/" 2>/dev/null
-git add -A && git commit -m "chore(${FEATURE_SLUG}): remove planning artefacts"
+# On the base branch (main/master), after merge
+git checkout "$BASE_BRANCH"
+git pull
+
+git mv "dev-docs/${FEATURE_SLUG}/" "dev-docs/archive/${FEATURE_SLUG}/"
+git commit -m "archive(${FEATURE_SLUG}): move planning docs to dev-docs/archive"
 ```
 
-**Option 2 — ADR + cleanup:**
-See [reference/doc-sync-guide.md](reference/doc-sync-guide.md) for ADR
-format and when to propose one. Create the ADR, commit, then run cleanup.
+**Before pushing, show the user the commit and ask for confirmation:**
 
-If Path A, push the cleanup/ADR commit and update the PR.
+```
+Ready to push archive commit to origin:
+
+  git mv dev-docs/${FEATURE_SLUG}/ dev-docs/archive/${FEATURE_SLUG}/
+  commit: archive(${FEATURE_SLUG}): move planning docs to dev-docs/archive
+
+Push now?
+```
+
+Only push after explicit confirmation:
+```bash
+git push origin "$BASE_BRANCH"
+```
+
+**If an ADR is warranted:**
+See [reference/doc-sync-guide.md](reference/doc-sync-guide.md) for ADR
+format and when to propose one. Create the ADR in `dev-docs/archive/${FEATURE_SLUG}/`
+or `dev-docs/adr/` before the archive commit, then include it in the same push.
 
 ### 5d — Worktree cleanup
 

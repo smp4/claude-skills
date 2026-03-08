@@ -191,7 +191,7 @@ Always ask explicitly:
 ```
 I'd like to create a new file:
 
-**docs/adr/0003-queue-based-import.md**
+**dev-docs/adr/0003-queue-based-import.md**
 - Purpose: Record why we chose a queue-based architecture for CSV import
   instead of synchronous processing
 - Why: This was a significant design decision (noted in PLAN.md risk
@@ -267,20 +267,25 @@ Example (if using Keep a Changelog format):
 
 ## Post-merge cleanup
 
-### What to delete
+### Archive the feature docs directory
 
-After the feature is merged, the planning artefacts have served their
-purpose. The code and tests are now the specification:
+After the feature is merged, move `dev-docs/<slug>/` to
+`dev-docs/archive/<slug>/` in a follow-up commit on main. This keeps
+the planning artefacts reachable without cluttering the active workspace.
 
-| Artefact                      | Delete?        | Why                                                |
-| ----------------------------- | -------------- | -------------------------------------------------- |
-| `docs/<slug>/SPEC.md`         | Yes            | Requirements are expressed as tests now            |
-| `docs/<slug>/PLAN.md`         | Yes            | The git log shows what was built and in what order |
-| `docs/<slug>/VERIFICATION.md` | Yes            | The CI pipeline is the ongoing verification        |
-| `docs/<slug>/` (dir)          | Yes (if empty) | No longer needed                                   |
+| Artefact                          | Action  | Why                                         |
+| --------------------------------- | ------- | ------------------------------------------- |
+| `dev-docs/<slug>/SPEC.md`         | Archive | Preserve for reference alongside the code   |
+| `dev-docs/<slug>/PLAN.md`         | Archive | Implementation rationale survives the merge |
+| `dev-docs/<slug>/VERIFICATION.md` | Archive | Traceability stays linked to the feature    |
+| `dev-docs/<slug>/` (dir)          | Archive | Moved whole to `dev-docs/archive/<slug>/`   |
 
-These are still in git history and/or the GH issue — they're archived,
-not lost.
+```bash
+git mv dev-docs/<slug>/ dev-docs/archive/<slug>/
+git commit -m "archive(<slug>): move planning docs to dev-docs/archive"
+```
+
+Prompt the user before pushing (see new-task Phase 5c).
 
 ### What to keep
 

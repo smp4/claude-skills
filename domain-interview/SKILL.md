@@ -3,7 +3,7 @@ name: domain-interview
 description: >
   Conduct a structured Three Amigos domain interview. Claude plays BA,
   tester, developer roles to extract business meaning, concrete examples,
-  and domain vocabulary. Produces docs/domain/DOMAIN.md with glossary.
+  and domain vocabulary. Produces dev-docs/domain/DOMAIN.md with glossary.
   Use before /new-plan when building features that need domain understanding.
   Use when: "domain interview", "let's capture requirements",
   "example mapping", "three amigos".
@@ -15,7 +15,7 @@ description: >
 
 This skill interviews a domain expert (not a developer) to extract
 business meaning, concrete examples, and vocabulary. It produces a
-single artefact — `docs/domain/DOMAIN.md` — containing business rules,
+single artefact — `dev-docs/domain/DOMAIN.md` — containing business rules,
 examples, and a glossary that flows into `/new-plan` and `/new-task`.
 
 Claude plays three roles during the interview, each with a distinct lens:
@@ -69,8 +69,8 @@ Do not go deeper here. The goal is orientation, not depth.
 Before starting the interview, scan for existing domain artefacts:
 
 ```
-Look for: docs/domain/DOMAIN.md       (single-context project)
-          docs/domain/*/DOMAIN.md      (multi-context project)
+Look for: dev-docs/domain/DOMAIN.md       (single-context project)
+          dev-docs/domain/*/DOMAIN.md      (multi-context project)
 ```
 
 If existing DOMAIN.md files are found:
@@ -205,20 +205,20 @@ anything to change?"
 Choose the output path based on context:
 
 **Single context, no existing files:**
-Write to `docs/domain/DOMAIN.md`
+Write to `dev-docs/domain/DOMAIN.md`
 
 **Multiple contexts detected during interview:**
 If the interview surfaced concepts belonging to different bounded
 contexts, split into separate files:
 ```
-docs/domain/<context-a>/DOMAIN.md
-docs/domain/<context-b>/DOMAIN.md
+dev-docs/domain/<context-a>/DOMAIN.md
+dev-docs/domain/<context-b>/DOMAIN.md
 ```
 Ask the expert to name each context before writing.
 
 **Existing contexts already present:**
-If `docs/domain/` already contains context subdirectories, write new
-context to `docs/domain/<context-name>/DOMAIN.md`. If extending an
+If `dev-docs/domain/` already contains context subdirectories, write new
+context to `dev-docs/domain/<context-name>/DOMAIN.md`. If extending an
 existing context, update the existing file (add new glossary terms,
 new business rules) rather than creating a new one.
 
