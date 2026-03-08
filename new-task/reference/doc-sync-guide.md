@@ -130,6 +130,42 @@ Reality:                    client.export(data, format="csv") — new required p
 Action:                     Update example to use current signature
 ```
 
+## Domain Language Drift
+
+Domain drift occurs when a DSL method is renamed in code without updating
+the DOMAIN.md glossary, or when new DSL methods are added without glossary
+entries.
+
+### Detection
+
+Compare each glossary `**DSL mapping**` field against the actual method
+signatures in the DSL interfaces file. A mismatch is drift.
+
+### Resolution
+
+1. **Method renamed in code**: ask the user which name is correct — the
+   domain expert's term or the developer's rename. Never auto-resolve.
+2. **New method, no glossary entry**: create a stub glossary entry with
+   TODO fields, ask the user to confirm the definition before submitting.
+3. **Convention difference** (`archive_todo` vs "Archive Todo"): not drift.
+   The DSL mapping field holds the code-convention name.
+
+### Batched reporting
+
+Collect all drift observations. Present once as a summary table:
+
+```
+| Glossary Term | DSL Mapping (expected) | Actual | Issue |
+|---------------|------------------------|--------|-------|
+| Archive Todo  | TodoDSL.archive_todo   | (missing) | Method not found in DSL |
+| (none)        | —                      | TodoDSL.restore_todo | No glossary entry |
+```
+
+Report at end of Phase 4, not per-violation. One interruption, one
+decision from the user.
+
+---
+
 ## Proposing changes
 
 ### For updates to existing files

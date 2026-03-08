@@ -1,5 +1,9 @@
 # Interview Guide — Reference
 
+> **Domain context**: if `docs/domain/DOMAIN.md` exists (from a prior
+> `/domain-interview`), it's loaded as context during Phase 0. Use its
+> business rules and glossary terms to ask sharper follow-up questions.
+
 ## Question bank by area
 
 ### Problem & motivation

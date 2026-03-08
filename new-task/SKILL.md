@@ -350,6 +350,33 @@ and **why** (traced to requirement IDs where possible).
 
 Wait for user approval before applying.
 
+### 4c+ — Domain drift check
+
+**When**: a DOMAIN.md exists (`docs/domain/DOMAIN.md` or
+`docs/domain/*/DOMAIN.md`) AND a DSL interfaces file exists
+(`acceptance_tests/dsl/interfaces.py` or `acceptance-tests/dsl/interfaces.ts`).
+
+**Skip** if either file is missing.
+
+1. Read both files
+2. List all DSL interface methods
+3. List all glossary entries with non-TODO DSL mappings
+4. Collect discrepancies:
+   - Glossary mapping references a method that doesn't exist in DSL
+   - DSL method has no corresponding glossary entry
+   - Naming mismatches (semantic, not case convention)
+5. Present a **single batched summary** of all findings
+6. Let the user decide which to fix before submitting
+7. Apply approved fixes to DOMAIN.md on the feature branch
+
+Do NOT interrupt per-violation. Collect everything, report once.
+
+Note: `snake_case` (Python) vs "Title Case" (glossary) is a convention
+difference, not drift. The DSL mapping field bridges this.
+
+See [reference/doc-sync-guide.md](reference/doc-sync-guide.md) for
+domain drift detection patterns and resolution rules.
+
 ### 4d — Apply and commit
 
 ```bash

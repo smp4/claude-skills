@@ -37,6 +37,20 @@ Plan Progress:
 
 This is the most important phase. Do NOT skip it. Do NOT assume requirements.
 
+### Domain context check
+
+Before starting the interview, check for existing domain artefacts:
+
+Look for: `docs/domain/DOMAIN.md` or `docs/domain/*/DOMAIN.md`
+
+If found: read all DOMAIN.md files. Use their actors, business rules,
+glossary terms, and examples as context during the interview. The
+interview still runs — but the answers will be richer because you have
+domain context. Reference specific business rules (BR-NN) and glossary
+terms when asking follow-up questions.
+
+If not found: proceed normally. No change to interview flow.
+
 ### Interview protocol
 
 Conduct a structured conversation. Ask questions **one area at a time** to
@@ -129,6 +143,39 @@ Using the confirmed interview summary, write a specification document.
   rewrite it until you can
 - Present the spec to the user and get explicit sign-off before Phase 2
 - The spec is a living document — update it if later phases reveal gaps
+
+### When domain artefacts exist
+
+If `docs/domain/DOMAIN.md` was loaded in Phase 0:
+
+1. **USE GLOSSARY TERMS**: Every business concept in SPEC.md must use the
+   exact term from the DOMAIN.md glossary. Do not rename domain concepts
+   to developer vocabulary. If you want a different name, note the reason
+   and ask the user to confirm.
+
+2. **TRACEABILITY**: Every acceptance criterion must trace to:
+   - A business rule in DOMAIN.md (by BR-NN id), or
+   - A key example in DOMAIN.md (by quote)
+
+   Format:
+   - AC-01: <criterion text> [-> BR-03]
+   - AC-02: <criterion text> [-> Example: "customer clicks archive..."]
+
+3. **DSL INTERFACE PROPOSAL**: After writing acceptance criteria, propose
+   DSL interfaces using glossary terms as method names.
+   - Python: `typing.Protocol` in `acceptance_tests/dsl/interfaces.py`
+   - TypeScript: interfaces in `acceptance-tests/dsl/interfaces.ts`
+   - See `~/.claude/skills/shared/reference/python-atdd-guide.md` for
+     Python patterns.
+
+4. **GLOSSARY UPDATE**: For each DSL method proposed, update the glossary
+   entry's DSL mapping in DOMAIN.md:
+   - Change: `TODO: not yet implemented`
+   - To: `acceptance_tests/dsl/interfaces.py::ClassName.method_name`
+
+5. **SOURCE OF TRUTH RULE**: At creation time, the DSL MUST match the
+   glossary — not the other way around. The domain expert approved these
+   terms. Name your DSL methods to match them.
 
 ---
 
