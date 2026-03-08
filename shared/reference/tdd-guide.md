@@ -169,3 +169,85 @@ Don't start with the general case.
 ### Not refactoring
 ❌ Test passes → move to next test (debt accumulates)
 ✅ Test passes → look at the code → clean up → THEN next test
+
+---
+
+## Acceptance Test-Driven Development (ATDD)
+
+ATDD wraps TDD. Acceptance tests are the outer loop (business behaviour);
+unit tests are the inner loop (implementation detail). TDD still governs
+how you write code. ATDD governs what code you write.
+
+### The Four-Layer Model (Dave Farley)
+
+```
+┌─────────────────────────────────────────────┐
+│  Layer 1: Acceptance Test (Executable Spec) │
+│  Business behaviour in Given/When/Then.     │
+│  Changes only when business rules change.   │
+└────────────────────┬────────────────────────┘
+                     │ calls
+┌────────────────────▼────────────────────────┐
+│  Layer 2: DSL (Domain Specific Language)    │
+│  Business vocabulary in code.               │
+│  Defines WHAT operations exist.             │
+│  No knowledge of HOW they execute.          │
+└────────────────────┬────────────────────────┘
+                     │ calls
+┌────────────────────▼────────────────────────┐
+│  Layer 3: Protocol Driver                   │
+│  Implements DSL for a specific interface    │
+│  (HTTP, CLI, UI, direct call).              │
+│  Swap drivers to test different interfaces  │
+│  with the same acceptance tests.            │
+└────────────────────┬────────────────────────┘
+                     │ calls
+┌────────────────────▼────────────────────────┐
+│  Layer 4: System Under Test                 │
+│  Production code.                           │
+└─────────────────────────────────────────────┘
+```
+
+### Key properties
+
+- **Stability**: acceptance tests know nothing about implementation. Even
+  if internals change completely, the spec remains valid.
+- **Interface independence**: swap Protocol Drivers to test the same
+  behaviour via HTTP, CLI, UI, or in-process. Tests are written once.
+- **AI safety contract**: the DSL gives Claude a precise, verifiable
+  contract. Generated code either passes or it doesn't — no subjective
+  judgment required.
+
+### Why this matters for AI-generated code
+
+As AI generates code faster, the bottleneck shifts from writing to
+verifying. Manual inspection doesn't scale. The four-layer model makes
+AI output trustworthy:
+
+- **DSL interfaces** tell Claude what operations must exist
+- **Acceptance tests** tell Claude what behaviour is required
+- **Protocol drivers** are what Claude implements — bounded, testable
+- **The test suite** gives immediate pass/fail feedback
+
+### ATDD + TDD workflow
+
+```
+1. Write acceptance test using DSL          (outer RED)
+2. TDD the implementation:
+   a. Write unit test                       (inner RED)
+   b. Minimum code to pass                  (inner GREEN)
+   c. Clean up                              (inner REFACTOR)
+   d. Repeat until acceptance test passes
+3. Acceptance test passes                   (outer GREEN)
+4. Refactor across layers                   (outer REFACTOR)
+```
+
+The outer loop drives what to build. The inner loop drives how to build
+it. Never skip the inner loop — ATDD without TDD produces brittle
+implementations.
+
+### Language-specific guides
+
+- **Python**: see [python-atdd-guide.md](python-atdd-guide.md) for
+  `typing.Protocol` DSL, pytest fixtures, driver injection, and
+  mypy/pyright verification
