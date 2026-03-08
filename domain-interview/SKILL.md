@@ -354,8 +354,14 @@ If `$ISSUE_NUM` is set (a GitHub issue was given):
 
 ## What happens next
 
-After DOMAIN.md is written and the issue is updated (if applicable), tell the expert:
+After DOMAIN.md is written and the issue is updated (if applicable), tell the user:
 
-> "Domain context captured. When you're ready to turn this into a
-> technical plan, run `/new-plan #N` (or `/new-plan` without an issue) —
-> it will use this domain context as its starting point."
+```
+Domain context captured and committed.
+
+Next steps:
+  /new-plan #N          — turn this domain model into a spec and implementation plan
+  /review dev-docs/domain/ --lens kerr  — review domain model for stakeholder boundary alignment
+```
+
+Replace `#N` with the actual issue number if one exists, omit if not.

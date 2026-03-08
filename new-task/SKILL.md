@@ -94,13 +94,30 @@ steps below are silently skipped when `$ISSUE_NUM` is empty.
 
 ### Load validation
 
-Before proceeding, confirm:
-- SPEC.md exists and contains numbered requirements (FR-x, AC-x)
-- PLAN.md exists and contains numbered implementation units
-- Each unit has a "Tests first" section
+Before proceeding, validate that upstream artefacts have the expected
+structure from `/new-plan`:
 
-If validation fails, tell the user what's missing and suggest they run
-`/new-plan` to generate proper deliverables.
+**SPEC.md checks:**
+- [ ] File exists
+- [ ] Contains `## 4. Functional requirements` with FR-x entries
+- [ ] Contains `## 8. Acceptance criteria checklist` with AC-x entries
+
+**PLAN.md checks:**
+- [ ] File exists
+- [ ] Contains `## Implementation units` with numbered units
+- [ ] Each unit has a `**Tests first**` section
+- [ ] Each unit has a `**Traces to**` line referencing FR-x or AC-x
+
+If validation fails, tell the user what's missing:
+
+```
+PLAN.md is missing "Tests first" in Unit 3, and SPEC.md has no AC-x entries.
+These are required for TDD execution.
+
+Fix options:
+  /new-plan dev-docs/<slug>/ — re-run planning to fill gaps
+  Fix manually              — add the missing sections, then re-run /new-task
+```
 
 ### Unit selection
 
@@ -189,6 +206,17 @@ Plan: N units to implement"
 
 For TDD methodology, see `~/.claude/skills/shared/reference/tdd-guide.md`.
 
+### Persona loading
+
+Read `~/.claude/skills/shared/reference/personas/beck.md` — section
+"Mode: TDD Session". Apply those strategy-selection and design heuristics
+throughout TDD.
+
+**When modifying existing code** (files that already exist with production
+logic): also read `~/.claude/skills/shared/reference/personas/feathers.md` —
+section "Mode: Modifying Existing Code". Apply the legacy code change
+algorithm: characterize before changing, find seams, use sprout/wrap.
+
 ### Per-unit cycle
 
 For each unit (or the single unit if `--unit N`):
@@ -270,6 +298,10 @@ or needed adjustment:
 
 For verification methodology, see
 `~/.claude/skills/shared/reference/verification-guide.md`.
+
+Read `~/.claude/skills/shared/reference/personas/farley.md` — section
+"Mode: Verification". Apply Farley's trust formula: DSL contract +
+acceptance tests + all green + static analysis.
 
 ```
 Verification:
@@ -554,13 +586,21 @@ git worktree remove "$WORKTREE_PATH"
 git branch -d "$BRANCH_NAME"  # only if merged
 ```
 
-After the PR is merged, tell the user to delete the remote branch:
+After the PR is merged, tell the user:
 
 ```
-Once you've merged the PR, delete the remote branch to keep the repo clean:
+Implementation complete.
 
-  git push origin --delete ${BRANCH_NAME}
+Next steps:
+  /review src/<path>/ --lens beck         — review the code for simple design
+  /review src/<path>/ --lens metz         — review for OO design quality
+  /review src/<path>/ --lens feathers     — review for legacy code safety (if modifying existing)
+  git push origin --delete <branch>       — clean up remote branch
+
+If domain artefacts exist, /review will also check for domain term drift.
 ```
+
+Replace paths and branch with actual values.
 
 ---
 

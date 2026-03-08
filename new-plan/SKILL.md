@@ -58,11 +58,24 @@ Before starting the interview, check for existing domain artefacts:
 
 Look for: `dev-docs/domain/DOMAIN.md` or `dev-docs/domain/*/DOMAIN.md`
 
-If found: read all DOMAIN.md files. Use their actors, business rules,
-glossary terms, and examples as context during the interview. The
-interview still runs — but the answers will be richer because you have
-domain context. Reference specific business rules (BR-NN) and glossary
-terms when asking follow-up questions.
+If found: read all DOMAIN.md files and validate they contain the expected
+sections from `/domain-interview`:
+- [ ] `## Actors` table exists
+- [ ] `## Business Rules` with numbered BR-NN entries exists
+- [ ] `## Glossary` with at least one term exists
+- [ ] `## Bounded Context` section exists
+
+If any section is missing, warn the user:
+```
+Found DOMAIN.md but it appears incomplete — missing: [list].
+This may have been written outside /domain-interview.
+Continue anyway, or run /domain-interview first to fill the gaps?
+```
+
+If valid: use actors, business rules, glossary terms, and examples as
+context during the interview. The interview still runs — but the answers
+will be richer because you have domain context. Reference specific business
+rules (BR-NN) and glossary terms when asking follow-up questions.
 
 If not found: proceed normally. No change to interview flow.
 
@@ -202,14 +215,10 @@ to be consumed by `/new-task`.
 See [reference/planning-guide.md](reference/planning-guide.md) for the
 full planning methodology.
 
-### Planning principles (Kent Beck style)
+### Planning principles
 
-- **Do the simplest thing that could possibly work** first
-- **YAGNI** — don't build what isn't in the spec
-- Break work into **small, independently testable units**
-- Each unit delivers **vertical slices** of working functionality
-- Order units so that **each builds on the last** and is demo-able
-- Identify **what to test first** for each unit — the test IS the design
+Read `~/.claude/skills/shared/reference/personas/beck.md` — section
+"Mode: Plan Review". Apply those heuristics when reviewing the plan structure.
 
 ### Plan structure template
 
@@ -242,7 +251,32 @@ Unit 1 → Unit 2 → Unit 3
 | Risk | Likelihood | Impact | Mitigation |
 |------|-----------|--------|------------|
 | ...  | ...       | ...    | ...        |
+
+## Fitness functions (if architectural decisions exist)
+| Property | Check | Automation |
+|---|---|---|
+| [what to preserve] | [how to detect drift] | [linter/test/CI gate] |
+
+## Decision reversibility (if architectural decisions exist)
+| Decision | Reversibility | Notes |
+|---|---|---|
+| [choice] | Reversible / Irreversible | [cost to reverse] |
+
+## External dependencies (if any)
+| Dependency | Failure mode | Stability pattern | Fallback |
+|---|---|---|---|
+| [service/DB/API] | [what breaks] | [timeout/circuit breaker/etc] | [degraded behaviour] |
 ```
+
+### Architectural fitness and stability
+
+After writing units, read `~/.claude/skills/shared/reference/architectural-fitness.md`.
+For plans with architectural decisions: add a fitness functions table and a
+decision reversibility table to PLAN.md. Skip for trivial single-unit plans.
+
+If the plan involves external dependencies (network calls, external services,
+databases), also read `~/.claude/skills/shared/reference/stability-patterns.md`.
+Add an external dependencies table to PLAN.md. Skip when no external deps.
 
 ### Plan rules
 
@@ -408,7 +442,18 @@ If no GitHub remote is detected, or the user prefers local packaging:
   - [x] Phase 3: Approved by user. Handed off via [GH issue #N / dev-docs/<feature-slug>/]
   ```
 - **STOP after handoff. Do NOT begin implementation. Do NOT invoke `/new-task`.**
-  Tell the user: "Plan complete. Run `/new-task` when you're ready to implement."
+  Tell the user:
+
+```
+Plan complete and handed off.
+
+Next steps:
+  /review dev-docs/<feature-slug>/       — review spec + plan before implementing (recommended)
+  /new-task dev-docs/<feature-slug>/     — start implementing units from the plan
+  /new-task #N                           — same, using the GitHub issue as entry point
+```
+
+Replace `<feature-slug>` and `#N` with actual values.
 
 ---
 

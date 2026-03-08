@@ -1,6 +1,6 @@
-# Claude Code Skills: /domain-interview + /new-plan + /new-task
+# Claude Code Skills: /domain-interview + /new-plan + /new-task + /review
 
-A three-skill chain for disciplined feature development with Claude Code.
+A four-skill chain for disciplined feature development with Claude Code.
 
 ## Architecture
 
@@ -16,13 +16,18 @@ A three-skill chain for disciplined feature development with Claude Code.
                            └──────────────────────┘    │   + DSL drift audit ●    │
                                                         │ Phase 5: PR + cleanup    │
                                                         └──────────────────────────┘
-● DSL: /new-plan proposes interface names (from glossary); /new-task writes the code;
-       /new-task audits drift between DSL implementation and DOMAIN.md glossary.
 
-                    ▲                        ▲                      ▲
-                    │         shared/reference/                     │
-                    └──────────── tdd-guide.md ─────────────────────┘
-                    └──────── verification-guide.md ────────────────┘
+/review (critique)                   shared/reference/
+┌──────────────────────┐            ┌──────────────────────────────┐
+│ Read artefact        │            │ tdd-guide.md                 │
+│ Select persona lens  │◀───────────│ verification-guide.md        │
+│ Produce critique     │  personas/ │ personas/beck.md             │
+└──────────────────────┘            │ personas/farley.md           │
+                                    │ personas/feathers.md         │
+● DSL: /new-plan proposes          │ farley-atdd-reference.md     │
+  interface names (from glossary); └──────────────────────────────┘
+  /new-task writes the code;
+  /new-task audits drift between DSL implementation and DOMAIN.md glossary.
 ```
 
 ## Workflow
@@ -39,6 +44,10 @@ A three-skill chain for disciplined feature development with Claude Code.
 3. **`/new-task #42`** or **`/new-task dev-docs/my-feature/`** — Picks up the
    plan, creates a git worktree, implements units using strict TDD
    (red → green → refactor), verifies against the spec, submits via PR or commit.
+
+4. **`/review dev-docs/auth/PLAN.md --lens beck`** — Reviews artefacts or
+   source code through distilled persona lenses (Beck, Farley, Feathers).
+   Lazy mode (no `--lens`) proposes relevant lenses and lets you choose.
 
 ## GitHub issue lifecycle
 
@@ -65,6 +74,7 @@ The skills stop and wait for your explicit approval at these points:
 | PLAN.md sign-off | `/new-plan` | Implementation units and approach |
 | Submit results | `/new-task` | Changes before PR/commit is created |
 | Archive push | `/new-task` | Commit moving docs to `dev-docs/archive/` |
+| Lens selection | `/review` | Which persona lenses to apply (lazy mode) |
 | Issue close | (manual) | You close the issue when satisfied |
 
 ## Installation
@@ -121,11 +131,24 @@ Restart Claude Code after pulling changes to reload skill metadata.
 │   └── reference/
 │       ├── doc-sync-guide.md       # Keep docs in sync with code
 │       └── worktree-guide.md       # Git worktree + issue comment lifecycle
+├── review/
+│   ├── SKILL.md                    # Persona-driven artefact review
+│   └── reference/
+│       └── review-guide.md         # Lens proposal heuristics, critique structure
 └── shared/
     └── reference/
         ├── SKILL.md                # Discovery-only (disabled for auto-invoke)
-        ├── tdd-guide.md            # Red-green-refactor, test naming, Beck rules
-        └── verification-guide.md   # Spec compliance, traceability matrix
+        ├── tdd-guide.md              # Red-green-refactor, test naming
+        ├── verification-guide.md    # Spec compliance, traceability matrix
+        ├── farley-atdd-reference.md # Deep reference: four-layer model, Python examples
+        ├── architectural-fitness.md # Fitness functions, reversibility assessment
+        ├── stability-patterns.md    # Circuit breaker, timeout, bulkhead, fallback
+        └── personas/
+            ├── beck.md             # Kent Beck — TDD, simple design, Tidy First
+            ├── farley.md           # Dave Farley — verification, ATDD, releasability
+            ├── feathers.md         # Michael Feathers — legacy code, seams, safety
+            ├── metz.md             # Sandi Metz — OO design, dependencies, single responsibility
+            └── kerr.md             # Jessica Kerr — sociotechnical, team/module boundary alignment
 ```
 
 ## Design decisions
@@ -141,3 +164,9 @@ Restart Claude Code after pulling changes to reload skill metadata.
   phantom triggering.
 - **Graceful degradation**: All skills detect git/GitHub availability
   and fall back to local-only workflows.
+- **Contextual triggering**: Personas and concept references are loaded
+  at specific workflow phases, not by user request. The user knows these
+  principles but wouldn't always think to invoke them at the right moment.
+  The workflow injects them contextually — Beck during TDD, Feathers when
+  modifying existing code, fitness functions when plans have architectural
+  decisions, stability patterns when external dependencies exist.

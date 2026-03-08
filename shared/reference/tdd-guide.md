@@ -113,40 +113,11 @@ If Act is more than one call, the interface might be too complex.
 Prefer stubs and fakes over mocks. Mocks test HOW code works; stubs and
 fakes test WHAT it does.
 
-## Kent Beck's four rules of simple design (priority order)
+## Kent Beck's design philosophy
 
-1. **Passes all the tests**
-2. **Reveals intention** — code reads like prose
-3. **No duplication** (DRY, but only after rule 2)
-4. **Fewest elements** — delete anything that doesn't serve rules 1-3
-
-## Kent Beck's design heuristics
-
-### Start with the test name
-The test name is a design decision. Write the name before the body:
-```
-test_user_creation_with_valid_email_returns_201
-```
-This forces you to think about the interface (what's called), the scenario
-(valid email), and the expectation (201) before writing any code.
-
-### Fake it till you make it
-First make the test pass with a hardcoded value. Then gradually replace
-constants with computed values.
-
-### Triangulate
-If one test can pass with a hardcoded value, add a second test with
-different data. Now you MUST generalise. Two concrete examples force the
-real implementation.
-
-### Obvious implementation
-If the implementation is obvious (you can see the whole thing in your
-head), just write it. Don't fake it. Save faking for when the path is
-unclear.
-
-### One-to-many
-Get it working for one item first. Then make it work for a collection.
-Don't start with the general case.
+For the full Beck persona — four rules of simple design, TDD strategy
+selection (obvious/fake-it/triangulate), and design heuristics — see
+`~/.claude/skills/shared/reference/personas/beck.md`.
 
 ## Common TDD mistakes
 

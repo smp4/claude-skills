@@ -48,32 +48,8 @@ Each vertical unit includes its model, validation, endpoint, AND tests.
 
 ## Kent Beck's design heuristics
 
-### Start with the test name
-The test name is a design decision. Write the name before the body:
-```
-test_user_creation_with_valid_email_returns_201
-```
-This forces you to think about the interface (what's called), the scenario
-(valid email), and the expectation (201) before writing any code.
-
-### Fake it till you make it
-First make the test pass with a hardcoded value. Then gradually replace
-constants with computed values. This keeps you moving and avoids big design
-jumps.
-
-### Triangulate
-If one test can pass with a hardcoded value, add a second test with
-different data. Now you MUST generalise. Two concrete examples force the
-real implementation.
-
-### Obvious implementation
-If the implementation is obvious (you can see the whole thing in your
-head), just write it. Don't fake it. Save faking for when the path is
-unclear.
-
-### One-to-many
-Get it working for one item first. Then make it work for a collection.
-Don't start with the general case.
+For the full set of Beck's TDD strategy selection and design heuristics, see
+`~/.claude/skills/shared/reference/personas/beck.md`.
 
 ## Risk assessment
 
