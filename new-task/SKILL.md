@@ -56,19 +56,16 @@ Task Progress:
 ### From GitHub issue
 
 ```bash
-# Extract spec and plan from issue body
-gh issue view <number> --json body --jq '.body' > /tmp/issue-body.md
+# Get issue body (contains links to SPEC.md and PLAN.md)
+gh issue view <number> --json body --jq '.body'
 ```
 
-Parse the issue body to extract the Specification and Implementation Plan
-sections. If the issue was created by `/new-plan`, these sections are
-clearly delimited by `## Specification` and `## Implementation Plan`
-headings.
-
-Save them locally for reference during execution:
-```bash
-mkdir -p .task-context
-# Extract and save each section
+The issue body (created by `/new-plan`) contains a `## Docs` table with
+links to SPEC.md and PLAN.md on the feature branch. Follow those links
+to read the files directly from the repo. The files live at:
+```
+dev-docs/<slug>/SPEC.md
+dev-docs/<slug>/PLAN.md
 ```
 
 ### From local docs directory
@@ -79,6 +76,21 @@ ls $ARGUMENTS/SPEC.md $ARGUMENTS/PLAN.md
 ```
 
 Read both files directly.
+
+### Issue number extraction
+
+Parse the frontmatter of SPEC.md for the driving issue number:
+
+```yaml
+---
+issue: "#N"
+slug: <feature-slug>
+---
+```
+
+Store as `$ISSUE_NUM` (e.g. `42`). If the `issue:` field is absent or
+this is a local-only repo, set `$ISSUE_NUM=""` — all `gh issue comment`
+steps below are silently skipped when `$ISSUE_NUM` is empty.
 
 ### Load validation
 
@@ -297,6 +309,17 @@ All acceptance criteria satisfied.
 Tests: N passing, 0 failing"
 ```
 
+If `$ISSUE_NUM` is set, add a comment to the driving issue:
+
+```bash
+REPO_URL=$(gh repo view --json url -q .url)
+gh issue comment $ISSUE_NUM --body "## Verification report ready
+
+| Document | Link |
+|---|---|
+| Verification | [VERIFICATION.md](${REPO_URL}/blob/feat/${FEATURE_SLUG}/dev-docs/${FEATURE_SLUG}/VERIFICATION.md) |"
+```
+
 ---
 
 ## Phase 4 — Doc Sync
@@ -503,6 +526,21 @@ Only push after explicit confirmation:
 ```bash
 git push origin "$BASE_BRANCH"
 ```
+
+After push, if `$ISSUE_NUM` is set, add a final comment to the driving issue:
+
+```bash
+REPO_URL=$(gh repo view --json url -q .url)
+gh issue comment $ISSUE_NUM --body "## Implementation complete — docs archived to main
+
+| Document | Link |
+|---|---|
+| Specification | [SPEC.md](${REPO_URL}/blob/main/dev-docs/archive/${FEATURE_SLUG}/SPEC.md) |
+| Plan | [PLAN.md](${REPO_URL}/blob/main/dev-docs/archive/${FEATURE_SLUG}/PLAN.md) |
+| Verification | [VERIFICATION.md](${REPO_URL}/blob/main/dev-docs/archive/${FEATURE_SLUG}/VERIFICATION.md) |"
+```
+
+Leave the issue open — the user decides when to close it.
 
 **If an ADR is warranted:**
 See [reference/doc-sync-guide.md](reference/doc-sync-guide.md) for ADR

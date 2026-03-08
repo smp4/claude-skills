@@ -169,6 +169,42 @@ git worktree remove --force "$WORKTREE_PATH"
 git branch --merged | grep "$BRANCH_NAME"
 ```
 
+## Issue comment lifecycle
+
+`/new-task` posts comments to the driving GitHub issue at three moments.
+All steps are skipped if `$ISSUE_NUM` is empty (local-only workflow).
+
+| When | Comment content |
+|---|---|
+| Phase 3d: VERIFICATION.md committed | Link to VERIFICATION.md on `feat/<slug>` branch |
+| Phase 5c: archive pushed to main | Links to SPEC.md, PLAN.md, VERIFICATION.md under `dev-docs/archive/<slug>/` on main |
+
+The issue body is **never modified** by `/new-task`. Comments are append-only.
+The issue is **never closed** automatically — leave that to the user.
+
+### Comment template (Phase 3d)
+
+```bash
+REPO_URL=$(gh repo view --json url -q .url)
+gh issue comment $ISSUE_NUM --body "## Verification report ready
+
+| Document | Link |
+|---|---|
+| Verification | [VERIFICATION.md](${REPO_URL}/blob/feat/${FEATURE_SLUG}/dev-docs/${FEATURE_SLUG}/VERIFICATION.md) |"
+```
+
+### Comment template (Phase 5c — after archive)
+
+```bash
+gh issue comment $ISSUE_NUM --body "## Implementation complete — docs archived to main
+
+| Document | Link |
+|---|---|
+| Specification | [SPEC.md](${REPO_URL}/blob/main/dev-docs/archive/${FEATURE_SLUG}/SPEC.md) |
+| Plan | [PLAN.md](${REPO_URL}/blob/main/dev-docs/archive/${FEATURE_SLUG}/PLAN.md) |
+| Verification | [VERIFICATION.md](${REPO_URL}/blob/main/dev-docs/archive/${FEATURE_SLUG}/VERIFICATION.md) |"
+```
+
 ## Edge cases
 
 ### No git repo at all

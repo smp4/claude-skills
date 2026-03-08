@@ -57,6 +57,22 @@ Interview Progress:
 
 ## Phase 0 — Orient
 
+### GitHub issue input (optional)
+
+If the user invoked this skill with a GitHub issue reference (`#N`):
+
+```bash
+gh issue view <N> --json title,body --jq '{title: .title, body: .body}'
+```
+
+Use the issue title and body as the initial business context for the interview. Tell the expert: "I've read the issue — let me confirm I've understood it correctly before we go deeper." Then proceed with the interview using the issue content as a starting point.
+
+If no issue reference was given, start the interview from scratch.
+
+Record `$ISSUE_NUM` (the issue number, or empty if none given) — needed in Phase 4.
+
+### Interview orientation
+
 Establish the interview scope in 1-2 questions max:
 
 - "What is the feature or capability we're exploring today?"
@@ -228,6 +244,38 @@ Only after approval, write the DOMAIN.md file(s) to the determined path.
 
 **Do NOT write any files before the expert has approved the draft.**
 
+### Step 6: Commit and update issue (if applicable)
+
+Commit DOMAIN.md with a message that references the driving issue (if any):
+
+```bash
+# commit message examples
+git commit -m "docs(domain): capture domain model for <feature> (#N)"   # with issue
+git commit -m "docs(domain): capture domain model for <feature>"         # without issue
+```
+
+If `$ISSUE_NUM` is set (a GitHub issue was given):
+
+1. Get the repo URL:
+   ```bash
+   gh repo view --json url -q .url
+   ```
+2. Add a comment to the issue:
+   ```markdown
+   ## Domain model complete
+
+   | Document | Link |
+   |---|---|
+   | Domain Model | [DOMAIN.md](<repo-url>/blob/main/dev-docs/domain/DOMAIN.md) |
+
+   Ready for specification. Run `/new-plan #N` to continue.
+   ```
+3. Add label `domain-complete` (create if absent):
+   ```bash
+   gh label create domain-complete --description "Domain model captured" --color "0075ca" 2>/dev/null
+   gh issue edit $ISSUE_NUM --add-label domain-complete
+   ```
+
 ---
 
 ## DOMAIN.md template
@@ -306,8 +354,8 @@ Only after approval, write the DOMAIN.md file(s) to the determined path.
 
 ## What happens next
 
-After DOMAIN.md is written, tell the expert:
+After DOMAIN.md is written and the issue is updated (if applicable), tell the expert:
 
 > "Domain context captured. When you're ready to turn this into a
-> technical plan, run `/new-plan` — it will use this domain context
-> as its starting point."
+> technical plan, run `/new-plan #N` (or `/new-plan` without an issue) —
+> it will use this domain context as its starting point."

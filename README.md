@@ -1,33 +1,71 @@
-# Claude Code Skills: /new-plan + /new-task
+# Claude Code Skills: /domain-interview + /new-plan + /new-task
 
-A paired skill set for disciplined feature development with Claude Code.
+A three-skill chain for disciplined feature development with Claude Code.
 
 ## Architecture
 
 ```
-/new-plan (planning)              /new-task (execution)
-┌──────────────────────┐         ┌──────────────────────────┐
-│ Phase 0: Interview   │         │ Phase 0: Load spec+plan  │
-│ Phase 1: Spec        │──────▶  │ Phase 1: Worktree setup  │
-│ Phase 2: Plan        │  hands  │ Phase 2: TDD per unit    │
-│ Phase 3: Handoff     │  off    │ Phase 3: Verify vs spec  │
-│   → GH issue or docs │         │ Phase 4: PR or commit    │
-└──────────────────────┘         └──────────────────────────┘
-                    ▲                        ▲
-                    │   shared/reference/    │
-                    └────── tdd-guide.md ────┘
-                    └── verification-guide.md┘
+/domain-interview          /new-plan (planning)        /new-task (execution)
+┌─────────────────┐       ┌──────────────────────┐    ┌──────────────────────────┐
+│ Phase 0: Orient │       │ Phase 0: Interview    │    │ Phase 0: Load spec+plan  │
+│ Phase 1: Examples│──────▶│ Phase 1: Spec        │────▶│ Phase 1: Worktree setup  │
+│ Phase 2: Language│ domain│   + DSL proposal ●   │spec │ Phase 2: TDD per unit    │
+│ Phase 3: Bounds  │  .md  │ Phase 2: Plan        │plan │   + DSL code written ●   │
+│ Phase 4: Draft   │       │ Phase 3: Handoff     │     │ Phase 3: Verify vs spec  │
+└─────────────────┘       │   → GH issue + docs  │     │ Phase 4: Doc sync        │
+                           └──────────────────────┘    │   + DSL drift audit ●    │
+                                                        │ Phase 5: PR + cleanup    │
+                                                        └──────────────────────────┘
+● DSL: /new-plan proposes interface names (from glossary); /new-task writes the code;
+       /new-task audits drift between DSL implementation and DOMAIN.md glossary.
+
+                    ▲                        ▲                      ▲
+                    │         shared/reference/                     │
+                    └──────────── tdd-guide.md ─────────────────────┘
+                    └──────── verification-guide.md ────────────────┘
 ```
 
 ## Workflow
 
-1. **`/new-plan`** — Interviews you, produces SPEC.md + PLAN.md, gets your
-   approval, hands off via GitHub issue or `docs/<feature>/` directory.
+1. **`/domain-interview`** _(optional)_ — Three Amigos interview with a domain
+   expert. Extracts business rules, examples, and vocabulary. Produces
+   `dev-docs/domain/DOMAIN.md`. Can be initiated with a GitHub issue (`#N`)
+   or a free-form business description.
 
-2. **`/new-task #42`** or **`/new-task docs/my-feature/`** — Picks up the
+2. **`/new-plan`** — Interviews you, produces SPEC.md + PLAN.md (using domain
+   context if available), gets your approval, hands off via GitHub issue or
+   `dev-docs/<feature>/` directory. Can be initiated with an issue reference.
+
+3. **`/new-task #42`** or **`/new-task dev-docs/my-feature/`** — Picks up the
    plan, creates a git worktree, implements units using strict TDD
-   (red → green → refactor), verifies against the spec, submits via PR
-   or commit.
+   (red → green → refactor), verifies against the spec, submits via PR or commit.
+
+## GitHub issue lifecycle
+
+When the repo has a GitHub remote, issues serve as navigation hubs — they
+link to docs in the repo rather than duplicating content.
+
+| Stage | Issue state |
+|---|---|
+| `/domain-interview #N` completes | Comment: link to DOMAIN.md on `main` |
+| `/new-plan #N` completes | Body updated: links to SPEC.md + PLAN.md on `feat/<slug>` |
+| `/new-task` verification complete | Comment: link to VERIFICATION.md on `feat/<slug>` |
+| PR merged, docs archived | Comment: links to all 3 docs under `dev-docs/archive/` on `main` |
+
+Issues are **never closed automatically** — that's a manual user decision.
+
+## Manual user gates
+
+The skills stop and wait for your explicit approval at these points:
+
+| Gate | Skill | What you approve |
+|---|---|---|
+| DOMAIN.md review | `/domain-interview` | Domain model correctness (expert sign-off) |
+| SPEC.md sign-off | `/new-plan` | Requirements completeness and accuracy |
+| PLAN.md sign-off | `/new-plan` | Implementation units and approach |
+| Submit results | `/new-task` | Changes before PR/commit is created |
+| Archive push | `/new-task` | Commit moving docs to `dev-docs/archive/` |
+| Issue close | (manual) | You close the issue when satisfied |
 
 ## Installation
 
@@ -68,17 +106,21 @@ Restart Claude Code after pulling changes to reload skill metadata.
 
 ```
 ~/.claude/skills/
-├── new-plan/
-│   ├── SKILL.md                    # 322 lines — planning workflow
+├── domain-interview/
+│   ├── SKILL.md                    # Three Amigos interview workflow
 │   └── reference/
-│       ├── interview-guide.md      # Question bank + anti-patterns
+│       └── interview-guide.md      # Question bank + anti-patterns
+├── new-plan/
+│   ├── SKILL.md                    # Planning workflow
+│   └── reference/
+│       ├── interview-guide.md      # Requirements interview questions
 │       ├── planning-guide.md       # Kent Beck decomposition heuristics
 │       └── handoff-guide.md        # GH issue vs local docs packaging
 ├── new-task/
-│   ├── SKILL.md                    # 416 lines — execution workflow
+│   ├── SKILL.md                    # Execution workflow
 │   └── reference/
 │       ├── doc-sync-guide.md       # Keep docs in sync with code
-│       └── worktree-guide.md       # Git worktree management
+│       └── worktree-guide.md       # Git worktree + issue comment lifecycle
 └── shared/
     └── reference/
         ├── SKILL.md                # Discovery-only (disabled for auto-invoke)
@@ -92,12 +134,10 @@ Restart Claude Code after pulling changes to reload skill metadata.
   frontmatter, progressive disclosure, and model-invoked triggering.
 - **Separated concerns**: Planning and execution are independent skills
   that compose through SPEC.md + PLAN.md as the contract.
+- **Issues as navigation hubs**: GitHub issues link to repo docs at the
+  correct branch; they don't duplicate content. The repo is the source of truth.
 - **Shared references**: TDD and verification guides live in
   `shared/reference/` with `disable-model-invocation: true` to avoid
   phantom triggering.
-- **Graceful degradation**: Both skills detect git/GitHub availability
+- **Graceful degradation**: All skills detect git/GitHub availability
   and fall back to local-only workflows.
-
-## TODO
-
-- During new-task, stopping work after a unit is completed, updating the issue or a local file to pick up later

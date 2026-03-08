@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install /new-plan, /new-task, and shared references as personal Claude Code skills.
+# Install /domain-interview, /new-plan, /new-task, and shared references as personal Claude Code skills.
 #
 # Usage:
 #   ./install.sh              # symlink mode (default) — stays in sync with repo
@@ -19,7 +19,7 @@ set -euo pipefail
 
 SKILLS_DIR="${HOME}/.claude/skills"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-SKILL_DIRS=("new-plan" "new-task" "shared" "sysmlv2")
+SKILL_DIRS=("domain-interview" "new-plan" "new-task" "shared" "sysmlv2")
 
 MODE="symlink"
 if [[ "${1:-}" == "--copy" ]]; then
@@ -123,9 +123,10 @@ done
 
 echo ""
 echo "Installed skills:"
-echo "  /new-plan   — Interview → Spec → Plan → Handoff"
-echo "  /new-task   — Worktree → TDD → Verify → PR/Commit"
-echo "  shared/     — TDD and verification guides (referenced by both)"
+echo "  /domain-interview — Three Amigos interview → DOMAIN.md"
+echo "  /new-plan         — Interview → Spec → Plan → Handoff"
+echo "  /new-task         — Worktree → TDD → Verify → PR/Commit"
+echo "  shared/           — TDD and verification guides (referenced by both)"
 echo ""
 
 if [[ "$MODE" == "symlink" ]]; then
