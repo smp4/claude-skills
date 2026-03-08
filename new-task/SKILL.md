@@ -591,11 +591,13 @@ After the PR is merged, tell the user:
 ```
 Implementation complete.
 
-Next steps:
+Next steps (run /review in a NEW conversation — so the reviewer hasn't seen this session):
   /review src/<path>/ --lens beck         — review the code for simple design
   /review src/<path>/ --lens metz         — review for OO design quality
   /review src/<path>/ --lens feathers     — review for legacy code safety (if modifying existing)
-  git push origin --delete <branch>       — clean up remote branch
+
+Cleanup:
+  git push origin --delete <branch>       — clean up remote branch after merge
 
 If domain artefacts exist, /review will also check for domain term drift.
 ```

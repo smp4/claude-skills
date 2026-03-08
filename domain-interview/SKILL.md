@@ -359,9 +359,11 @@ After DOMAIN.md is written and the issue is updated (if applicable), tell the us
 ```
 Domain context captured and committed.
 
-Next steps:
-  /new-plan #N          — turn this domain model into a spec and implementation plan
+Next steps (run /review in a NEW conversation — so the reviewer hasn't seen this session):
   /review dev-docs/domain/ --lens kerr  — review domain model for stakeholder boundary alignment
+
+Then:
+  /new-plan #N          — turn this domain model into a spec and implementation plan
 ```
 
 Replace `#N` with the actual issue number if one exists, omit if not.

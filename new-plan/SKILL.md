@@ -447,8 +447,10 @@ If no GitHub remote is detected, or the user prefers local packaging:
 ```
 Plan complete and handed off.
 
-Next steps:
+Next steps (in a NEW conversation — so the reviewer hasn't seen the planning reasoning):
   /review dev-docs/<feature-slug>/       — review spec + plan before implementing (recommended)
+
+Then, to implement:
   /new-task dev-docs/<feature-slug>/     — start implementing units from the plan
   /new-task #N                           — same, using the GitHub issue as entry point
 ```

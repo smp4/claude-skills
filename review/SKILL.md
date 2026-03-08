@@ -16,6 +16,27 @@ This skill reviews planning artefacts and source code through distilled
 persona lenses. Each lens produces a distinct critique section with specific
 feedback traced to line numbers and requirements.
 
+## Fresh Context Requirement
+
+**This skill MUST run in a new conversation**, not in the same session that
+produced the artefact being reviewed. If Claude wrote the code or plan, it
+cannot objectively critique its own output — confirmation bias is inevitable
+when the reasoning that produced the work is still in context.
+
+If invoked in a conversation that contains `/new-plan` or `/new-task` output,
+warn the user:
+
+```
+This review will be less effective because I wrote the artefact being
+reviewed in this same session. My own reasoning is still in context,
+which creates confirmation bias.
+
+For an independent review, start a new conversation and run:
+  /review <path> --lens <name>
+```
+
+Proceed if the user insists, but flag this limitation in the review output.
+
 ## Usage
 
 ```
