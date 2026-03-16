@@ -1,4 +1,4 @@
-# Claude Code Skills: /domain-interview + /new-plan + /new-task + /review
+# Claude Code Skills: /domain-interview + /new-plan + /new-task + /review + /write-docs
 
 A four-skill chain for disciplined feature development with Claude Code.
 
@@ -16,6 +16,15 @@ A four-skill chain for disciplined feature development with Claude Code.
                            └──────────────────────┘    │   + DSL drift audit ●    │
                                                         │ Phase 5: PR + cleanup    │
                                                         └──────────────────────────┘
+
+/write-docs (documentation)
+┌─────────────────────────────────────────┐
+│ Phase 0: Detect Diátaxis usage          │
+│ Phase 1: Classify (if Diátaxis in use)  │
+│ Phase 2: Enforce quadrant rules + style │
+│ — Invoked by /new-task Phase 4c         │
+│ — Available standalone                  │
+└─────────────────────────────────────────┘
 
 /review (critique)                   shared/reference/
 ┌──────────────────────┐            ┌──────────────────────────────┐
@@ -49,17 +58,23 @@ A four-skill chain for disciplined feature development with Claude Code.
    source code through distilled persona lenses (Beck, Farley, Feathers).
    Lazy mode (no `--lens`) proposes relevant lenses and lets you choose.
 
+5. **`/write-docs`** — Writes or improves documentation. Detects whether the
+   project uses Diátaxis; if so, classifies content into the correct quadrant
+   (Tutorial / How-To / Explanation) and enforces quadrant rules before
+   writing. Otherwise applies style rules only. Invoked automatically by
+   `/new-task` Phase 4c when new doc files are proposed.
+
 ## GitHub issue lifecycle
 
 When the repo has a GitHub remote, issues serve as navigation hubs — they
 link to docs in the repo rather than duplicating content.
 
-| Stage | Issue state |
-|---|---|
-| `/domain-interview #N` completes | Comment: link to DOMAIN.md on `main` |
-| `/new-plan #N` completes | Body updated: links to SPEC.md + PLAN.md on `feat/<slug>` |
-| `/new-task` verification complete | Comment: link to VERIFICATION.md on `feat/<slug>` |
-| PR merged, docs archived | Comment: links to all 3 docs under `dev-docs/archive/` on `main` |
+| Stage                             | Issue state                                                      |
+| --------------------------------- | ---------------------------------------------------------------- |
+| `/domain-interview #N` completes  | Comment: link to DOMAIN.md on `main`                             |
+| `/new-plan #N` completes          | Body updated: links to SPEC.md + PLAN.md on `feat/<slug>`        |
+| `/new-task` verification complete | Comment: link to VERIFICATION.md on `feat/<slug>`                |
+| PR merged, docs archived          | Comment: links to all 3 docs under `dev-docs/archive/` on `main` |
 
 Issues are **never closed automatically** — that's a manual user decision.
 
@@ -67,15 +82,15 @@ Issues are **never closed automatically** — that's a manual user decision.
 
 The skills stop and wait for your explicit approval at these points:
 
-| Gate | Skill | What you approve |
-|---|---|---|
+| Gate             | Skill               | What you approve                           |
+| ---------------- | ------------------- | ------------------------------------------ |
 | DOMAIN.md review | `/domain-interview` | Domain model correctness (expert sign-off) |
-| SPEC.md sign-off | `/new-plan` | Requirements completeness and accuracy |
-| PLAN.md sign-off | `/new-plan` | Implementation units and approach |
-| Submit results | `/new-task` | Changes before PR/commit is created |
-| Archive push | `/new-task` | Commit moving docs to `dev-docs/archive/` |
-| Lens selection | `/review` | Which persona lenses to apply (lazy mode) |
-| Issue close | (manual) | You close the issue when satisfied |
+| SPEC.md sign-off | `/new-plan`         | Requirements completeness and accuracy     |
+| PLAN.md sign-off | `/new-plan`         | Implementation units and approach          |
+| Submit results   | `/new-task`         | Changes before PR/commit is created        |
+| Archive push     | `/new-task`         | Commit moving docs to `dev-docs/archive/`  |
+| Lens selection   | `/review`           | Which persona lenses to apply (lazy mode)  |
+| Issue close      | (manual)            | You close the issue when satisfied         |
 
 ## Installation
 
@@ -135,6 +150,11 @@ Restart Claude Code after pulling changes to reload skill metadata.
 │   ├── SKILL.md                    # Persona-driven artefact review
 │   └── reference/
 │       └── review-guide.md         # Lens proposal heuristics, critique structure
+├── write-docs/
+│   ├── SKILL.md                    # Detect Diátaxis, classify, enforce, write
+│   └── references/
+│       ├── diataxis.md             # Quadrant rules (tutorial/how-to/explanation)
+│       └── style.md                # Voice, tone, formatting rules
 └── shared/
     └── reference/
         ├── SKILL.md                # Discovery-only (disabled for auto-invoke)
@@ -170,3 +190,4 @@ Restart Claude Code after pulling changes to reload skill metadata.
   The workflow injects them contextually — Beck during TDD, Feathers when
   modifying existing code, fitness functions when plans have architectural
   decisions, stability patterns when external dependencies exist.
+

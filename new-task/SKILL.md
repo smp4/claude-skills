@@ -401,6 +401,10 @@ and **why** (traced to requirement IDs where possible).
 
 - **Updates to existing files**: apply unless the user objects
 - **New files**: always ask for explicit permission first
+- **When writing new docs (or significantly rewriting existing)**: run
+  `/write-docs` — it detects Diátaxis usage, classifies the content if
+  applicable, and enforces style. If content would span multiple quadrants,
+  propose splitting before asking user permission.
 - **Never propose docs for behaviour that isn't implemented and tested**
 
 Wait for user approval before applying.
