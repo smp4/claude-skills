@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install /domain-interview, /new-plan, /new-task, /review, and shared references as personal Claude Code skills.
+# Install all Claude Code skills: /adversarial-plan-review, /domain-interview, /new-plan, /new-task, /pr-cleanup, /review, /sysmlv2, /write-docs, and shared references.
 #
 # Usage:
 #   ./install.sh              # symlink mode (default) — stays in sync with repo
@@ -19,7 +19,7 @@ set -euo pipefail
 
 SKILLS_DIR="${HOME}/.claude/skills"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-SKILL_DIRS=("adversarial-plan-review" "domain-interview" "new-plan" "new-task" "review" "shared" "sysmlv2" "write-docs", "pr-cleanup")
+SKILL_DIRS=("adversarial-plan-review" "domain-interview" "new-plan" "new-task" "review" "shared" "sysmlv2" "write-docs" "pr-cleanup")
 
 MODE="symlink"
 if [[ "${1:-}" == "--copy" ]]; then
@@ -129,7 +129,8 @@ echo "  /new-plan                — Interview → Spec → Plan → Handoff"
 echo "  /new-task                — Worktree → TDD → Verify → PR/Commit"
 echo "  /review                  — Persona-driven artefact review"
 echo "  /write-docs              — Diátaxis-aware documentation writing"
-echo "  /pr-cleanup              — Cleanup claude worktrees and feature branches after new-task"
+echo "  /sysmlv2                 — SysML v2 modelling reference and examples"
+echo "  /pr-cleanup              — Verify merge, pull main, delete branch + worktree"
 echo "  shared/                  — TDD guide, verification guide, persona lenses"
 echo ""
 
