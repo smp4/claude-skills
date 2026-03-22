@@ -19,7 +19,7 @@ set -euo pipefail
 
 SKILLS_DIR="${HOME}/.claude/skills"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-SKILL_DIRS=("domain-interview" "new-plan" "new-task" "review" "shared" "sysmlv2" "write-docs")
+SKILL_DIRS=("adversarial-plan-review" "domain-interview" "new-plan" "new-task" "review" "shared" "sysmlv2" "write-docs")
 
 MODE="symlink"
 if [[ "${1:-}" == "--copy" ]]; then
@@ -123,12 +123,13 @@ done
 
 echo ""
 echo "Installed skills:"
-echo "  /domain-interview — Three Amigos interview → DOMAIN.md"
-echo "  /new-plan         — Interview → Spec → Plan → Handoff"
-echo "  /new-task         — Worktree → TDD → Verify → PR/Commit"
-echo "  /review           — Persona-driven artefact review"
-echo "  /write-docs       — Diátaxis-aware documentation writing"
-echo "  shared/           — TDD guide, verification guide, persona lenses"
+echo "  /adversarial-plan-review — Multi-persona parallel plan stress-test"
+echo "  /domain-interview        — Three Amigos interview → DOMAIN.md"
+echo "  /new-plan                — Interview → Spec → Plan → Handoff"
+echo "  /new-task                — Worktree → TDD → Verify → PR/Commit"
+echo "  /review                  — Persona-driven artefact review"
+echo "  /write-docs              — Diátaxis-aware documentation writing"
+echo "  shared/                  — TDD guide, verification guide, persona lenses"
 echo ""
 
 if [[ "$MODE" == "symlink" ]]; then

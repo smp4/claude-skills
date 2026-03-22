@@ -2,9 +2,9 @@
 name: review
 description: >
   Review a SPEC.md, PLAN.md, or source code through distilled persona lenses
-  (Beck, Farley, Feathers) and concept lenses (architecture, resilience).
-  Produces structured critique with specific, actionable feedback. Use when
-  the user says "review this", "critique my plan", "review my spec", or
+  (Beck, Farley, Feathers, Ford/Parsons, Kua) and concept lenses (architecture,
+  resilience). Produces structured critique with specific, actionable feedback.
+  Use when the user says "review this", "critique my plan", "review my spec", or
   invokes /review with a file or directory path.
 ---
 
@@ -63,6 +63,8 @@ The `$ARGUMENTS` value is parsed as:
 | feathers | `~/.claude/skills/shared/reference/personas/feathers.md` | Legacy code safety, seams, characterization |
 | metz | `~/.claude/skills/shared/reference/personas/metz.md` | OO design, dependency direction, single responsibility |
 | kerr | `~/.claude/skills/shared/reference/personas/kerr.md` | Sociotechnical alignment, team/module boundaries |
+| ford-parsons | `~/.claude/skills/shared/reference/personas/ford-parsons.md` | Evolvability, fitness functions, coupling, implicit bets |
+| kua | `~/.claude/skills/shared/reference/personas/kua.md` | Decision reversibility, ADR quality, deferral attractors |
 
 ### Concept lenses (framework checklists)
 

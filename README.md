@@ -1,6 +1,6 @@
-# Claude Code Skills: /domain-interview + /new-plan + /new-task + /review + /write-docs
+# Claude Code Skills: /domain-interview + /new-plan + /new-task + /review + /write-docs + /adversarial-plan-review
 
-A four-skill chain for disciplined feature development with Claude Code.
+A skill chain for disciplined feature development with Claude Code.
 
 ## Architecture
 
@@ -33,8 +33,18 @@ A four-skill chain for disciplined feature development with Claude Code.
 │ Produce critique     │  personas/ │ personas/beck.md             │
 └──────────────────────┘            │ personas/farley.md           │
                                     │ personas/feathers.md         │
-● DSL: /new-plan proposes          │ farley-atdd-reference.md     │
-  interface names (from glossary); └──────────────────────────────┘
+/adversarial-plan-review            │ personas/ford-parsons.md     │
+┌──────────────────────┐            │ personas/kua.md              │
+│ Read plan/spec       │◀───────────│ farley-atdd-reference.md     │
+│ Spawn 4 parallel     │  personas/ └──────────────────────────────┘
+│ reviewer subagents   │
+│ Collect findings     │
+│ Synthesis doc →      │
+│ human decides        │
+└──────────────────────┘
+
+● DSL: /new-plan proposes
+  interface names (from glossary);
   /new-task writes the code;
   /new-task audits drift between DSL implementation and DOMAIN.md glossary.
 ```
@@ -55,10 +65,17 @@ A four-skill chain for disciplined feature development with Claude Code.
    (red → green → refactor), verifies against the spec, submits via PR or commit.
 
 4. **`/review dev-docs/auth/PLAN.md --lens beck`** — Reviews artefacts or
-   source code through distilled persona lenses (Beck, Farley, Feathers).
-   Lazy mode (no `--lens`) proposes relevant lenses and lets you choose.
+   source code through distilled persona lenses (Beck, Farley, Feathers,
+   Ford/Parsons, Kua). Lazy mode (no `--lens`) proposes relevant lenses and
+   lets you choose.
 
-5. **`/write-docs`** — Writes or improves documentation. Detects whether the
+5. **`/adversarial-plan-review dev-docs/my-feature/PLAN.md`** _(optional)_ —
+   Stress-tests a plan using four reviewer personas in parallel subagents
+   (Ford/Parsons, Kua, Farley, Feathers). Each reviews independently. Produces
+   a synthesis document with cross-cutting patterns and human decision questions.
+   Run after `/new-plan` when architectural decisions are significant.
+
+6. **`/write-docs`** — Writes or improves documentation. Detects whether the
    project uses Diátaxis; if so, classifies content into the correct quadrant
    (Tutorial / How-To / Explanation) and enforces quadrant rules before
    writing. Otherwise applies style rules only. Invoked automatically by
@@ -90,6 +107,7 @@ The skills stop and wait for your explicit approval at these points:
 | Submit results   | `/new-task`         | Changes before PR/commit is created        |
 | Archive push     | `/new-task`         | Commit moving docs to `dev-docs/archive/`  |
 | Lens selection   | `/review`           | Which persona lenses to apply (lazy mode)  |
+| Synthesis review | `/adversarial-plan-review` | Which findings to act on before proceeding |
 | Issue close      | (manual)            | You close the issue when satisfied         |
 
 ## Installation
@@ -131,6 +149,10 @@ Restart Claude Code after pulling changes to reload skill metadata.
 
 ```
 ~/.claude/skills/
+├── adversarial-plan-review/
+│   ├── SKILL.md                    # Multi-persona parallel plan stress-test
+│   └── references/
+│       └── subagent-setup.md       # Subagent prompt templates and wiring
 ├── domain-interview/
 │   ├── SKILL.md                    # Three Amigos interview workflow
 │   └── reference/
@@ -168,7 +190,9 @@ Restart Claude Code after pulling changes to reload skill metadata.
             ├── farley.md           # Dave Farley — verification, ATDD, releasability
             ├── feathers.md         # Michael Feathers — legacy code, seams, safety
             ├── metz.md             # Sandi Metz — OO design, dependencies, single responsibility
-            └── kerr.md             # Jessica Kerr — sociotechnical, team/module boundary alignment
+            ├── kerr.md             # Jessica Kerr — sociotechnical, team/module boundary alignment
+            ├── ford-parsons.md     # Ford + Parsons — evolvability, fitness functions, implicit bets
+            └── kua.md              # Patrick Kua — decision reversibility, ADR quality
 ```
 
 ## Design decisions
