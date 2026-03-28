@@ -540,6 +540,7 @@ This commit is on the feature branch — included in the PR or merge.
 **Branch**: feature/<slug>  |  **Tests**: X passing, 0 failing
 **Units completed**: N of M  |  **Verification**: all AC satisfied
 **Docs synced**: [list of updated doc files]
+**Handoff docs**: [N handoff-unit-*.md files on branch / none (--continuous mode)]
 
 ### Changes summary
 - [files created/modified, with brief descriptions]
@@ -592,6 +593,10 @@ eval gh pr create \
 PR body must include: summary, "Closes #N" (if GH issue source), spec
 reference, implementation units checklist, doc updates, verification
 status, and test results. VERIFICATION.md is appended after `---`.
+
+If units were implemented across sessions (handoff docs exist): add a
+note — "Implemented across N sessions; handoff-unit-*.md files on branch
+serve as session transfer records."
 
 
 #### Path B — Commit only (no GitHub)
