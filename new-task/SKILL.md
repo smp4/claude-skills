@@ -22,16 +22,18 @@ happens in an isolated git worktree, even for small changes. Submission is via P
 ## Usage
 
 ```
-/new-task #42                        # from GitHub issue
-/new-task dev-docs/user-auth/            # from local docs directory
+/new-task #42                             # from GitHub issue
+/new-task dev-docs/user-auth/             # from local docs directory
 /new-task dev-docs/user-auth/ --unit 3   # specific unit only
+/new-task dev-docs/user-auth/ --continuous  # run all units without handoff pause
 ```
 
 The `$ARGUMENTS` value is parsed as:
 
 - Starts with `#` → GitHub issue number
 - Otherwise → path to directory containing SPEC.md and PLAN.md
-- `--unit N` → execute only unit N (default: all units sequentially)
+- `--unit N` → execute only unit N (default: stop after each unit and write handoff)
+- `--continuous` → run all units sequentially without stopping; no handoff docs written
 
 ## Workflow phases
 
@@ -119,10 +121,18 @@ Fix options:
   Fix manually              — add the missing sections, then re-run /new-task
 ```
 
+### Argument parsing
+
+Parse flags from `$ARGUMENTS`:
+
+- `--unit N` → set `$TARGET_UNIT=N`, run only that unit
+- `--continuous` → set `$CONTINUOUS=true`
+- Neither → set `$TARGET_UNIT=""`, `$CONTINUOUS=false` (default: stop after each unit)
+
 ### Unit selection
 
-If `--unit N` was specified, identify Unit N from PLAN.md.
-If no unit specified, present the unit list and ask:
+If `$TARGET_UNIT` is set, identify that unit from PLAN.md.
+If no unit specified, present the unit list:
 
 ```
 Found N implementation units:
@@ -130,7 +140,8 @@ Found N implementation units:
   Unit 2: [name] — [goal]
   ...
 
-Execute all units sequentially, or a specific unit?
+Mode: stop-after-each-unit (default) — write handoff-unit-N.md after each unit.
+Use --continuous to run all units without pausing.
 ```
 
 ---
@@ -230,6 +241,7 @@ Unit N: [name]
 - [ ] 2e. Run full test suite — no regressions
 - [ ] 2f. Commit the unit
 - [ ] 2g. Update SPEC.md if behaviour diverged
+- [ ] 2h. Write handoff doc and stop (skip if --continuous or last unit)
 ```
 
 ### 2a — Read unit spec
@@ -289,6 +301,73 @@ or needed adjustment:
 1. Note the change
 2. Update the local copy of SPEC.md
 3. Flag it for the user in Phase 4
+
+### 2h — Handoff (default) or continue (`--continuous`)
+
+**Skip this step entirely if:**
+- `$CONTINUOUS=true`, OR
+- This is the only unit in the plan, OR
+- This is the last unit in the plan (proceed to Phase 3 instead)
+
+Otherwise, write `dev-docs/${FEATURE_SLUG}/handoff-unit-N.md` with the
+following content, then stop and tell the user what to do next.
+
+#### Handoff document template
+
+```markdown
+# Handoff: Unit N -> Unit N+1
+
+## Session bootstrap
+- **Worktree**: <worktree-path>
+- **Branch**: feat/<slug>
+- **Test command**: <project test runner invocation, e.g. pytest tests/ -x>
+- **Docs**: dev-docs/<slug>/
+
+## Next command
+
+    /new-task dev-docs/<slug>/ --unit <N+1>
+
+## Unit N complete: [name]
+- **Tests added**: [count] passing
+- **Key files changed**: [list with one-line descriptions]
+- **Key decisions**: [choices made during implementation, tradeoffs]
+- **Traces to**: FR-x, AC-x
+
+## Deviations from plan
+- [deviation + rationale, or "None"]
+
+## Plan assumptions that changed
+- [things PLAN.md says about future units that are now wrong, or "None"]
+
+## Known issues / deferred items
+- [items punted, or "None"]
+
+## Next unit: [N+1 name]
+- **Goal**: [one-line goal from plan]
+- **Entry point**: [first test to write]
+- **Watch out for**: [anything non-obvious the next session should know]
+```
+
+Commit the handoff doc:
+
+```bash
+git add dev-docs/${FEATURE_SLUG}/handoff-unit-N.md
+git commit -m "docs(${FEATURE_SLUG}): handoff unit N -> N+1"
+```
+
+Then stop and output:
+
+```
+Unit N complete — [name]
+
+Handoff written: dev-docs/<slug>/handoff-unit-N.md
+
+To continue in a fresh session:
+  1. Run /clear (or start a new conversation)
+  2. Paste: /new-task dev-docs/<slug>/ --unit <N+1>
+```
+
+**Do NOT proceed to Unit N+1 or Phase 3. Stop here.**
 
 ---
 
@@ -461,6 +540,7 @@ This commit is on the feature branch — included in the PR or merge.
 **Branch**: feature/<slug>  |  **Tests**: X passing, 0 failing
 **Units completed**: N of M  |  **Verification**: all AC satisfied
 **Docs synced**: [list of updated doc files]
+**Handoff docs**: [N handoff-unit-*.md files on branch / none (--continuous mode)]
 
 ### Changes summary
 - [files created/modified, with brief descriptions]
@@ -513,6 +593,10 @@ eval gh pr create \
 PR body must include: summary, "Closes #N" (if GH issue source), spec
 reference, implementation units checklist, doc updates, verification
 status, and test results. VERIFICATION.md is appended after `---`.
+
+If units were implemented across sessions (handoff docs exist): add a
+note — "Implemented across N sessions; handoff-unit-*.md files on branch
+serve as session transfer records."
 
 
 #### Path B — Commit only (no GitHub)
