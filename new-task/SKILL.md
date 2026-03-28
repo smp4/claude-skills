@@ -22,16 +22,18 @@ happens in an isolated git worktree, even for small changes. Submission is via P
 ## Usage
 
 ```
-/new-task #42                        # from GitHub issue
-/new-task dev-docs/user-auth/            # from local docs directory
+/new-task #42                             # from GitHub issue
+/new-task dev-docs/user-auth/             # from local docs directory
 /new-task dev-docs/user-auth/ --unit 3   # specific unit only
+/new-task dev-docs/user-auth/ --continuous  # run all units without handoff pause
 ```
 
 The `$ARGUMENTS` value is parsed as:
 
 - Starts with `#` → GitHub issue number
 - Otherwise → path to directory containing SPEC.md and PLAN.md
-- `--unit N` → execute only unit N (default: all units sequentially)
+- `--unit N` → execute only unit N (default: stop after each unit and write handoff)
+- `--continuous` → run all units sequentially without stopping; no handoff docs written
 
 ## Workflow phases
 
@@ -119,10 +121,18 @@ Fix options:
   Fix manually              — add the missing sections, then re-run /new-task
 ```
 
+### Argument parsing
+
+Parse flags from `$ARGUMENTS`:
+
+- `--unit N` → set `$TARGET_UNIT=N`, run only that unit
+- `--continuous` → set `$CONTINUOUS=true`
+- Neither → set `$TARGET_UNIT=""`, `$CONTINUOUS=false` (default: stop after each unit)
+
 ### Unit selection
 
-If `--unit N` was specified, identify Unit N from PLAN.md.
-If no unit specified, present the unit list and ask:
+If `$TARGET_UNIT` is set, identify that unit from PLAN.md.
+If no unit specified, present the unit list:
 
 ```
 Found N implementation units:
@@ -130,7 +140,8 @@ Found N implementation units:
   Unit 2: [name] — [goal]
   ...
 
-Execute all units sequentially, or a specific unit?
+Mode: stop-after-each-unit (default) — write handoff-unit-N.md after each unit.
+Use --continuous to run all units without pausing.
 ```
 
 ---
