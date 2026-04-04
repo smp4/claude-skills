@@ -430,8 +430,12 @@ if [[ "$MODE" != "check" && "$MODE" != "uninstall" ]]; then
   printf "# NOTE: these aliases override CLAUDE_CONFIG_DIR if set in interactive shells.\n" >> "${SCRIPT_DIR}/aliases.sh"
   printf "${ALIASES}" >> "${SCRIPT_DIR}/aliases.sh"
   echo ""
-  echo "Generated aliases.sh"
-  echo "Add to ~/.profile or ~/.zshrc:"
+  echo "Generated aliases.sh. To activate:"
+  echo ""
+  echo "  # Add to ~/.zshrc or ~/.profile (run once):"
+  echo "  echo 'source ${SCRIPT_DIR}/aliases.sh' >> ~/.zshrc"
+  echo ""
+  echo "  # Source in current terminal:"
   echo "  source ${SCRIPT_DIR}/aliases.sh"
 fi
 
