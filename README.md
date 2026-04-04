@@ -198,6 +198,32 @@ alias claude='CLAUDE_CONFIG_DIR=~/.claude/.claudea claude'  # default
 
 Edit files under `dot_claude/`, commit, pull on other machines, re-run `./install.sh`. Skills, hooks, CLAUDE.md, and statusline-command.sh update immediately via symlinks; `settings.json` is regenerated with controlled fields merged from the template.
 
+### Migrating an existing single-account install
+
+If you already have a working `~/.claude/` and want to move it to a named account directory (e.g. `~/.claude/.claudea`):
+
+```bash
+# 1. Copy to a temp location outside ~/.claude/ (can't move a dir into itself)
+cp -r ~/.claude /tmp/claude_migrate
+
+# 2. Move to the new account location
+mv /tmp/claude_migrate ~/.claude/.claudea
+```
+
+Then create `accounts.json`:
+
+```json
+{
+  "accounts": [
+    { "name": "claudea", "claude_home": "~/.claude/.claudea", "default": true }
+  ]
+}
+```
+
+Run `./install.sh`. It will overwrite `skills/`, `hooks`, `commands`, `CLAUDE.md`, `statusline-command.sh`, and regenerate `settings.json` from the template. Your runtime state (`history.jsonl`, `sessions/`, `plans/`, `projects/`, `tasks/`, `todos/`, `cache/`) is preserved from the copy.
+
+If you don't need to preserve history, skip the copy and let `install.sh` create a fresh directory.
+
 ### Other flags
 
 ```bash
