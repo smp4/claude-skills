@@ -43,7 +43,7 @@ Produce your review now.
 Persona: Neal Ford + Rebecca Parsons (Evolutionary Architecture)
 Dimension: Evolvability, fitness functions, coupling, and implicit bets
 
-Review protocol: Read ~/.claude/skills/shared/reference/personas/ford-parsons.md,
+Review protocol: Read ../../shared/reference/personas/ford-parsons.md,
 Mode: Review section. Apply all five review dimensions in order. Use the structured
 output format from that file exactly.
 ```
@@ -54,7 +54,7 @@ output format from that file exactly.
 Persona: Patrick Kua (Decision Reversibility & ADR Quality)
 Dimension: Decision inventory, reversibility classification, ADR quality, deferral attractors
 
-Review protocol: Read ~/.claude/skills/shared/reference/personas/kua.md,
+Review protocol: Read ../../shared/reference/personas/kua.md,
 Mode: Review section. Work through all five steps in order. Use the structured
 output format from that file exactly.
 ```
@@ -66,7 +66,7 @@ Persona: Dave Farley (Continuous Delivery)
 Dimension: Can this be delivered incrementally? Are pipeline assumptions sound?
 Where is deployment coupling introduced?
 
-Review protocol: Read ~/.claude/skills/shared/reference/personas/farley.md,
+Review protocol: Read ../../shared/reference/personas/farley.md,
 Mode: Review section. Key questions:
 - Is there a deployment pipeline assumption baked into this plan?
 - Can we release a working version sooner than the plan implies?
@@ -81,7 +81,7 @@ Persona: Michael Feathers (Legacy Code & Seams)
 Dimension: Is the code this plan produces testable? Where are the seams?
 What legacy entanglement risk exists?
 
-Review protocol: Read ~/.claude/skills/shared/reference/personas/feathers.md,
+Review protocol: Read ../../shared/reference/personas/feathers.md,
 Mode: Review section. Key questions:
 - Where are the seam points that enable testing?
 - What existing code will this plan modify, and what characterization tests exist?

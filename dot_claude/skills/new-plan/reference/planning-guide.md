@@ -49,7 +49,7 @@ Each vertical unit includes its model, validation, endpoint, AND tests.
 ## Kent Beck's design heuristics
 
 For the full set of Beck's TDD strategy selection and design heuristics, see
-`~/.claude/skills/shared/reference/personas/beck.md`.
+`../../shared/reference/personas/beck.md`.
 
 ## Risk assessment
 

@@ -215,16 +215,16 @@ Plan: N units to implement"
 
 **Goal**: Implement each unit using strict Red → Green → Refactor.
 
-For TDD methodology, see `~/.claude/skills/shared/reference/tdd-guide.md`.
+For TDD methodology, see `../shared/reference/tdd-guide.md`.
 
 ### Persona loading
 
-Read `~/.claude/skills/shared/reference/personas/beck.md` — section
+Read `../shared/reference/personas/beck.md` — section
 "Mode: TDD Session". Apply those strategy-selection and design heuristics
 throughout TDD.
 
 **When modifying existing code** (files that already exist with production
-logic): also read `~/.claude/skills/shared/reference/personas/feathers.md` —
+logic): also read `../shared/reference/personas/feathers.md` —
 section "Mode: Modifying Existing Code". Apply the legacy code change
 algorithm: characterize before changing, find seams, use sprout/wrap.
 
@@ -376,9 +376,9 @@ To continue in a fresh session:
 **Goal**: Confirm the implementation satisfies the specification.
 
 For verification methodology, see
-`~/.claude/skills/shared/reference/verification-guide.md`.
+`../shared/reference/verification-guide.md`.
 
-Read `~/.claude/skills/shared/reference/personas/farley.md` — section
+Read `../shared/reference/personas/farley.md` — section
 "Mode: Verification". Apply Farley's trust formula: DSL contract +
 acceptance tests + all green + static analysis.
 

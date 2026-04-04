@@ -33,7 +33,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/.claude/read-once/hook.sh"
+            "command": "{{CLAUDE_HOME}}/read-once/hook.sh"
           }
         ]
       }

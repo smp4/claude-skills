@@ -117,7 +117,7 @@ fakes test WHAT it does.
 
 For the full Beck persona — four rules of simple design, TDD strategy
 selection (obvious/fake-it/triangulate), and design heuristics — see
-`~/.claude/skills/shared/reference/personas/beck.md`.
+`personas/beck.md`.
 
 ## Common TDD mistakes
 

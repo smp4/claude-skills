@@ -193,7 +193,7 @@ If `dev-docs/domain/DOMAIN.md` was loaded in Phase 0:
    DSL interfaces using glossary terms as method names.
    - Python: `typing.Protocol` in `acceptance_tests/dsl/interfaces.py`
    - TypeScript: interfaces in `acceptance-tests/dsl/interfaces.ts`
-   - See `~/.claude/skills/shared/reference/python-atdd-guide.md` for
+   - See `../shared/reference/python-atdd-guide.md` for
      Python patterns.
 
 4. **GLOSSARY UPDATE**: For each DSL method proposed, update the glossary
@@ -217,7 +217,7 @@ full planning methodology.
 
 ### Planning principles
 
-Read `~/.claude/skills/shared/reference/personas/beck.md` — section
+Read `../shared/reference/personas/beck.md` — section
 "Mode: Plan Review". Apply those heuristics when reviewing the plan structure.
 
 ### Plan structure template
@@ -270,12 +270,12 @@ Unit 1 → Unit 2 → Unit 3
 
 ### Architectural fitness and stability
 
-After writing units, read `~/.claude/skills/shared/reference/architectural-fitness.md`.
+After writing units, read `../shared/reference/architectural-fitness.md`.
 For plans with architectural decisions: add a fitness functions table and a
 decision reversibility table to PLAN.md. Skip for trivial single-unit plans.
 
 If the plan involves external dependencies (network calls, external services,
-databases), also read `~/.claude/skills/shared/reference/stability-patterns.md`.
+databases), also read `../shared/reference/stability-patterns.md`.
 Add an external dependencies table to PLAN.md. Skip when no external deps.
 
 ### Plan rules

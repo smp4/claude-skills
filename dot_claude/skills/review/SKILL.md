@@ -58,20 +58,20 @@ The `$ARGUMENTS` value is parsed as:
 
 | Lens | Reference file | Best for |
 |---|---|---|
-| beck | `~/.claude/skills/shared/reference/personas/beck.md` | Simple design, TDD, intention-revealing code |
-| farley | `~/.claude/skills/shared/reference/personas/farley.md` | Verification architecture, ATDD, testability |
-| feathers | `~/.claude/skills/shared/reference/personas/feathers.md` | Legacy code safety, seams, characterization |
-| metz | `~/.claude/skills/shared/reference/personas/metz.md` | OO design, dependency direction, single responsibility |
-| kerr | `~/.claude/skills/shared/reference/personas/kerr.md` | Sociotechnical alignment, team/module boundaries |
-| ford-parsons | `~/.claude/skills/shared/reference/personas/ford-parsons.md` | Evolvability, fitness functions, coupling, implicit bets |
-| kua | `~/.claude/skills/shared/reference/personas/kua.md` | Decision reversibility, ADR quality, deferral attractors |
+| beck | `../shared/reference/personas/beck.md` | Simple design, TDD, intention-revealing code |
+| farley | `../shared/reference/personas/farley.md` | Verification architecture, ATDD, testability |
+| feathers | `../shared/reference/personas/feathers.md` | Legacy code safety, seams, characterization |
+| metz | `../shared/reference/personas/metz.md` | OO design, dependency direction, single responsibility |
+| kerr | `../shared/reference/personas/kerr.md` | Sociotechnical alignment, team/module boundaries |
+| ford-parsons | `../shared/reference/personas/ford-parsons.md` | Evolvability, fitness functions, coupling, implicit bets |
+| kua | `../shared/reference/personas/kua.md` | Decision reversibility, ADR quality, deferral attractors |
 
 ### Concept lenses (framework checklists)
 
 | Lens | Reference file | Best for |
 |---|---|---|
-| architecture | `~/.claude/skills/shared/reference/architectural-fitness.md` | Fitness functions, reversibility, architectural drift |
-| resilience | `~/.claude/skills/shared/reference/stability-patterns.md` | External dependency failure modes, blast radius |
+| architecture | `../shared/reference/architectural-fitness.md` | Fitness functions, reversibility, architectural drift |
+| resilience | `../shared/reference/stability-patterns.md` | External dependency failure modes, blast radius |
 
 ## Workflow
 
@@ -135,7 +135,7 @@ Wait for user selection before proceeding.
 ### Step 3 — Load persona and review
 
 For each selected lens:
-1. Read the reference file (persona or concept) from `~/.claude/skills/shared/reference/`
+1. Read the reference file (persona or concept) from `../shared/reference/`
 2. For persona lenses, identify the relevant mode section for the artefact type:
    - SPEC.md → Farley "Verification", Beck "Plan Review", Kerr "Domain Review"
    - PLAN.md → Beck "Plan Review", Farley "ATDD Planning", Metz "Plan Review", Kerr "Plan Review"
@@ -206,7 +206,7 @@ when reviewing source code, tests, SPEC.md, or PLAN.md.
 **Skip** if no DOMAIN.md exists.
 
 1. Read DOMAIN.md glossary
-2. Read `~/.claude/skills/shared/reference/domain-language-guide.md` for
+2. Read `../shared/reference/domain-language-guide.md` for
    source-of-truth rules
 3. Scan the artefact under review for domain concept references:
    - Variable/function/class names that correspond to glossary terms
