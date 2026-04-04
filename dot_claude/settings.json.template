@@ -1,0 +1,58 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(~/.claude/**)",
+      "Read(~/Projects/{dse,claude-gen,pstar,pstar_meta,pstar_ref,sysand_index,syside}/**)",
+      "Write(~/Projects/{dse,claude-gen,pstar,pstar_meta,pstar_ref,sysand_index,syside}/**)"
+    ],
+    "deny": [
+      "Read(~/**)",
+      "Write(~/**)",
+      "Read(**/.env)",
+      "Read(**/.env.*)",
+      "Read(**/secrets/**)",
+      "Read(**/.aws/**)",
+      "Read(**/.ssh/**)",
+      "Read(**/*.pem)",
+      "Read(**/*.key)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{CLAUDE_HOME}}/hooks/warn-sensitive-files.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/read-once/hook.sh"
+          }
+        ]
+      }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "bash {{CLAUDE_HOME}}/statusline-command.sh"
+  },
+  "enabledPlugins": {
+    "pyright-lsp@claude-plugins-official": true,
+    "cq@cq": true
+  },
+  "extraKnownMarketplaces": {
+    "cq": {
+      "source": {
+        "source": "github",
+        "repo": "mozilla-ai/cq"
+      }
+    }
+  }
+}

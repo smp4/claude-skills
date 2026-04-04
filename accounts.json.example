@@ -1,0 +1,6 @@
+{
+  "accounts": [
+    { "name": "claudea", "claude_home": "~/.claude/.claudea", "default": true },
+    { "name": "claudeb", "claude_home": "~/.claude/.claudeb" }
+  ]
+}

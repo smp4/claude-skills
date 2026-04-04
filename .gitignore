@@ -209,3 +209,5 @@ __marimo__/
 .claude
 todo.md
 domain-driven-skills-context/
+accounts.json
+aliases.sh
