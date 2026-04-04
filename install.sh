@@ -333,6 +333,9 @@ copy_account() {
     echo "  Copied: skills/${skill}"
   done
 
+  for item in hooks commands CLAUDE.md statusline-command.sh; do
+    python3 -c "import os,sys; p=sys.argv[1]; os.remove(p) if os.path.islink(p) or os.path.isfile(p) else (os.path.isdir(p) and __import__('shutil').rmtree(p))" "${claude_home}/${item}" 2>/dev/null || true
+  done
   cp -RL "${DOT_CLAUDE}/hooks"               "${claude_home}/hooks"
   cp -RL "${DOT_CLAUDE}/commands"            "${claude_home}/commands"
   cp     "${DOT_CLAUDE}/CLAUDE.md"           "${claude_home}/CLAUDE.md"
@@ -395,20 +398,21 @@ check_account() {
     echo "  Warning: settings.json not found"
   fi
 
-  return $errors
+  [[ "$errors" -eq 0 ]]
 }
 
 # --- Main loop --------------------------------------------------------------
 
 ALIASES=""
 DEFAULT_NAME=""
+CHECK_ERRORS=0
 
 while IFS='|' read -r name claude_home is_default; do
   case "$MODE" in
     install) install_account "$name" "$claude_home" ;;
     copy)    copy_account    "$name" "$claude_home" ;;
     uninstall) uninstall_account "$name" "$claude_home" ;;
-    check)   check_account   "$name" "$claude_home" ;;
+    check)   check_account "$name" "$claude_home" || CHECK_ERRORS=$((CHECK_ERRORS+1)) ;;
   esac
 
   alias_cmd="alias ${name}='CLAUDE_CONFIG_DIR=${claude_home} claude'"
@@ -433,3 +437,7 @@ fi
 
 echo ""
 echo "Done."
+
+if [[ "$MODE" == "check" && "$CHECK_ERRORS" -gt 0 ]]; then
+  exit 1
+fi

@@ -113,9 +113,7 @@ The skills stop and wait for your explicit approval at these points:
 ## Installation
 
 ```bash
-chmod +x install.sh
-
-# Symlink mode (recommended) — skills stay in sync with this repo
+# Symlink mode (recommended) — stays in sync with this repo
 ./install.sh
 
 # Copy mode — standalone snapshot, no sync
@@ -125,25 +123,88 @@ chmod +x install.sh
 ./install.sh --uninstall
 ```
 
+On first run, `install.sh` auto-creates `accounts.json` pointing at `~/.claude` if no `accounts.json` exists. Skills, hooks, commands, CLAUDE.md, and statusline-command.sh are symlinked from `dot_claude/` in this repo into each account's config dir. `settings.json` is generated from `dot_claude/settings.json.template`.
+
 ### Staying in sync
 
-With symlink mode (the default), your workflow is:
+With symlink mode, edits in `~/.claude/skills/` are edits to the repo. Pull to update all machines:
 
 ```bash
-# Edit skills directly (either location works — they're the same files)
-vim ~/.claude/skills/new-plan/SKILL.md
-# or
-vim ~/repos/claude-skills/new-plan/SKILL.md
-
-# Commit and push from the repo
-cd ~/repos/claude-skills
-git add -A && git commit -m "improve interview questions" && git push
-
-# On another machine, pull to update
 git pull   # skills update immediately via symlinks
 ```
 
 Restart Claude Code after pulling changes to reload skill metadata.
+
+## Multi-account setup
+
+Run multiple Claude Code accounts on one machine, each with its own `CLAUDE_CONFIG_DIR`, sharing a single common config from this repo.
+
+### Step 0 — bootstrap `dot_claude/` (one-time, per machine)
+
+After cloning, populate `dot_claude/` from your existing `~/.claude/`:
+
+```bash
+cp ~/.claude/CLAUDE.md                     dot_claude/CLAUDE.md
+cp ~/.claude/hooks/warn-sensitive-files.sh dot_claude/hooks/warn-sensitive-files.sh
+cp ~/.claude/statusline-command.sh         dot_claude/statusline-command.sh
+# Edit dot_claude/settings.json.template:
+#   replace all hardcoded paths with {{CLAUDE_HOME}}
+```
+
+This is a one-time step per machine. Commit the result — other machines get it via `git pull`.
+
+### Setup
+
+```bash
+# 1. Copy the example and edit for your accounts
+cp accounts.json.example accounts.json
+
+# 2. Run the installer
+./install.sh
+
+# 3. Load the generated aliases
+echo "source $(pwd)/aliases.sh" >> ~/.zshrc  # or ~/.profile
+source aliases.sh
+```
+
+`accounts.json` is gitignored — each machine maintains its own.
+
+### accounts.json format
+
+```json
+{
+  "accounts": [
+    { "name": "claudea", "claude_home": "~/.claude/.claudea", "default": true },
+    { "name": "claudeb", "claude_home": "~/.claude/.claudeb" }
+  ]
+}
+```
+
+Exactly one account should have `"default": true`. If absent, `accounts.json` is auto-created with a single account at `~/.claude`.
+
+### Aliases
+
+`install.sh` generates `aliases.sh` (gitignored):
+
+```bash
+alias claudea='CLAUDE_CONFIG_DIR=~/.claude/.claudea claude'
+alias claudeb='CLAUDE_CONFIG_DIR=~/.claude/.claudeb claude'
+alias claude='CLAUDE_CONFIG_DIR=~/.claude/.claudea claude'  # default
+```
+
+**Caveat**: the `claude` alias overrides any `CLAUDE_CONFIG_DIR` already set in an interactive shell. Use the named alias (`claudea`, `claudeb`) when you need a specific account explicitly.
+
+### Updating common config
+
+Edit files under `dot_claude/`, commit, pull on other machines, re-run `./install.sh`. Skills, hooks, CLAUDE.md, and statusline-command.sh update immediately via symlinks; `settings.json` is regenerated with controlled fields merged from the template.
+
+### Other flags
+
+```bash
+./install.sh --check      # read-only sync check; exits 1 if controlled fields diverge
+./install.sh --force      # overwrite real files/dirs with symlinks
+./install.sh --skip-diff  # skip settings.json diff prompt
+```
 
 ## File layout
 
