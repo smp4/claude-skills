@@ -194,6 +194,18 @@ alias claude='CLAUDE_CONFIG_DIR=~/.claude/.claudea claude'  # default
 
 **Caveat**: the `claude` alias overrides any `CLAUDE_CONFIG_DIR` already set in an interactive shell. Use the named alias (`claudea`, `claudeb`) when you need a specific account explicitly.
 
+### Plugins
+
+Plugins are **not shared** across accounts — each account maintains its own plugin state and cache under its `CLAUDE_CONFIG_DIR`. This is intentional: plugins write runtime state to their config dir, so sharing would cause conflicts.
+
+You are responsible for keeping plugin versions in sync across accounts. Install or update plugins separately in each account. Use `--check` to verify that `enabledPlugins` in each account's `settings.json` matches the template:
+
+```bash
+./install.sh --check
+```
+
+To add a plugin to all accounts, update `dot_claude/settings.json.template` and re-run `./install.sh`.
+
 ### Updating common config
 
 Edit files under `dot_claude/`, commit, pull on other machines, re-run `./install.sh`. Skills, hooks, CLAUDE.md, and statusline-command.sh update immediately via symlinks; `settings.json` is regenerated with controlled fields merged from the template.
