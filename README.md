@@ -114,16 +114,18 @@ The skills stop and wait for your explicit approval at these points:
 
 ```bash
 # Symlink mode (recommended) — stays in sync with this repo
-./install.sh
+afb install
 
 # Copy mode — standalone snapshot, no sync
-./install.sh --copy
+afb install --copy
 
 # Uninstall
-./install.sh --uninstall
+afb uninstall
 ```
 
-On first run, `install.sh` auto-creates `accounts.json` pointing at `~/.claude` if no `accounts.json` exists. Skills, hooks, commands, CLAUDE.md, and statusline-command.sh are symlinked from `dot_claude/` in this repo into each account's config dir. `settings.json` is generated from `dot_claude/settings.json.template`.
+On first run, `afb install` auto-creates `accounts.json` pointing at `~/.claude` if no `accounts.json` exists. Skills, hooks, commands, CLAUDE.md, and statusline-command.sh are symlinked from `dot_claude/` in this repo into each account's config dir. `settings.json` is generated from `dot_claude/settings.json.template`.
+
+See [docs/install.md](docs/install.md) for full install instructions, [docs/usage.md](docs/usage.md) for command reference, and [docs/uninstall.md](docs/uninstall.md) for removal steps.
 
 ### Staying in sync
 
@@ -160,7 +162,7 @@ This is a one-time step per machine. Commit the result — other machines get it
 cp accounts.json.example accounts.json
 
 # 2. Run the installer
-./install.sh
+afb install
 
 # 3. Load the generated aliases
 echo "source $(pwd)/aliases.sh" >> ~/.zshrc  # or ~/.profile
@@ -184,7 +186,7 @@ Exactly one account should have `"default": true`. If absent, `accounts.json` is
 
 ### Aliases
 
-`install.sh` generates `aliases.sh` (gitignored):
+`afb install` generates `aliases.sh` (gitignored):
 
 ```bash
 alias claudea='CLAUDE_CONFIG_DIR=~/.claude/.claudea claude'
@@ -198,17 +200,17 @@ alias claude='CLAUDE_CONFIG_DIR=~/.claude/.claudea claude'  # default
 
 Plugins are **not shared** across accounts — each account maintains its own plugin state and cache under its `CLAUDE_CONFIG_DIR`. This is intentional: plugins write runtime state to their config dir, so sharing would cause conflicts.
 
-You are responsible for keeping plugin versions in sync across accounts. Install or update plugins separately in each account. Use `--check` to verify that `enabledPlugins` in each account's `settings.json` matches the template:
+You are responsible for keeping plugin versions in sync across accounts. Install or update plugins separately in each account. Use `afb check` to verify that `enabledPlugins` in each account's `settings.json` matches the template:
 
 ```bash
-./install.sh --check
+afb check
 ```
 
-To add a plugin to all accounts, update `dot_claude/settings.json.template` and re-run `./install.sh`.
+To add a plugin to all accounts, update `dot_claude/settings.json.template` and re-run `afb install`.
 
 ### Updating common config
 
-Edit files under `dot_claude/`, commit, pull on other machines, re-run `./install.sh`. Skills, hooks, CLAUDE.md, and statusline-command.sh update immediately via symlinks; `settings.json` is regenerated with controlled fields merged from the template.
+Edit files under `dot_claude/`, commit, pull on other machines, re-run `afb install`. Skills, hooks, CLAUDE.md, and statusline-command.sh update immediately via symlinks; `settings.json` is regenerated with controlled fields merged from the template.
 
 ### Migrating an existing single-account install
 
@@ -232,16 +234,16 @@ Then create `accounts.json`:
 }
 ```
 
-Run `./install.sh`. It will overwrite `skills/`, `hooks`, `commands`, `CLAUDE.md`, `statusline-command.sh`, and regenerate `settings.json` from the template. Your runtime state (`history.jsonl`, `sessions/`, `plans/`, `projects/`, `tasks/`, `todos/`, `cache/`) is preserved from the copy.
+Run `afb install`. It will overwrite `skills/`, `hooks`, `commands`, `CLAUDE.md`, `statusline-command.sh`, and regenerate `settings.json` from the template. Your runtime state (`history.jsonl`, `sessions/`, `plans/`, `projects/`, `tasks/`, `todos/`, `cache/`) is preserved from the copy.
 
-If you don't need to preserve history, skip the copy and let `install.sh` create a fresh directory.
+If you don't need to preserve history, skip the copy and let `afb install` create a fresh directory.
 
 ### Other flags
 
 ```bash
-./install.sh --check      # read-only sync check; exits 1 if controlled fields diverge
-./install.sh --force      # overwrite real files/dirs with symlinks
-./install.sh --skip-diff  # skip settings.json diff prompt
+afb check         # read-only sync check; exits 1 if controlled fields diverge
+afb install --force      # overwrite real files/dirs with symlinks
+afb install --skip-diff  # skip settings.json diff prompt
 ```
 
 ## File layout

@@ -111,68 +111,6 @@ test_install_creates_afb_symlink() {
   rm -rf "$TMP"
 }
 
-# ---------------------------------------------------------------------------
-# test_parity_with_install_sh (temporary)
-# Runs both install.sh and afb install in separate temp dirs and diffs results.
-# Removed in Unit 6 when install.sh is deleted.
-# ---------------------------------------------------------------------------
-test_parity_with_install_sh() {
-  # Skip if install.sh not present
-  if [[ ! -f "${REPO}/install.sh" ]]; then
-    pass "test_parity_with_install_sh (skipped — install.sh already deleted)"
-    return
-  fi
-
-  TMPA="$(mktemp -d)"
-  TMPB="$(mktemp -d)"
-  HOME_A="${TMPA}/claude_home"
-  HOME_B="${TMPB}/claude_home"
-  mkdir -p "$HOME_A" "$HOME_B"
-
-  # Run original install.sh
-  cat > "${TMPA}/accounts.json" <<EOF
-{ "accounts": [{ "name": "test", "claude_home": "${HOME_A}", "default": true }] }
-EOF
-  ORIGINAL_ACCOUNTS="${REPO}/accounts.json"
-  # Temporarily set accounts file for install.sh
-  # install.sh uses SCRIPT_DIR/accounts.json; we need to run it from a location that has accounts.json
-  # This is complex — install.sh reads from its own directory
-  # Simplest: copy repo to TMPA, adjust accounts.json there
-  cp -R "${REPO}/." "${TMPA}/repo/"
-  cat > "${TMPA}/repo/accounts.json" <<EOF
-{ "accounts": [{ "name": "test", "claude_home": "${HOME_A}", "default": true }] }
-EOF
-  bash "${TMPA}/repo/install.sh" --skip-diff >/dev/null 2>&1 || true
-
-  # Run afb install
-  cat > "${TMPB}/accounts.json" <<EOF
-{ "accounts": [{ "name": "test", "claude_home": "${HOME_B}", "default": true }] }
-EOF
-  AFB_ACCOUNTS_FILE="${TMPB}/accounts.json" LOCAL_BIN="${TMPB}/bin" bash "$AFB" install --skip-diff >/dev/null 2>&1 || true
-
-  # Compare symlink targets (normalised by substituting the home paths)
-  links_a=$(find "$HOME_A" -maxdepth 3 -type l | sort | while read -r f; do
-    rel="${f#${HOME_A}/}"
-    target="$(readlink "$f" | sed "s|${TMPA}/repo/||g")"
-    echo "${rel} -> ${target}"
-  done)
-  links_b=$(find "$HOME_B" -maxdepth 3 -type l | sort | while read -r f; do
-    rel="${f#${HOME_B}/}"
-    target="$(readlink "$f" | sed "s|${REPO}/||g")"
-    echo "${rel} -> ${target}"
-  done)
-
-  rm -rf "$TMPA" "$TMPB"
-
-  if [[ "$links_a" == "$links_b" ]]; then
-    pass "test_parity_with_install_sh"
-  else
-    # Show diff for debugging
-    echo "  install.sh links: $(echo "$links_a" | head -5)"
-    echo "  afb links:        $(echo "$links_b" | head -5)"
-    pass "test_parity_with_install_sh (symlink sets differ but structure matches — acceptable)"
-  fi
-}
 
 # ---------------------------------------------------------------------------
 # Run
@@ -182,7 +120,6 @@ test_install_copy_mode
 test_uninstall_then_check_exits_1
 test_install_autocreates_accounts_json
 test_install_creates_afb_symlink
-test_parity_with_install_sh
 
 echo ""
 echo "Results: ${PASS} passed, ${FAIL} failed"
