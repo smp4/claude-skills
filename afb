@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+# afb — Agentic Flight Bag
+# Single CLI entrypoint for Claude Code infrastructure management.
+#
+# Usage:
+#   afb install [--copy] [--force] [--skip-diff]
+#   afb uninstall
+#   afb check
+#   afb work [<name>]
+#   afb wt create <name>
+#   afb wt list
+#   afb wt clean <name> [--force]
+#   afb rate [--refresh] [--self-test]
+#   afb rate --daemon install
+#   afb rate --daemon remove
+
+set -euo pipefail
+
+# Resolve SCRIPT_DIR following symlinks
+_source="${BASH_SOURCE[0]}"
+while [[ -L "$_source" ]]; do
+  _dir="$(cd -P "$(dirname "$_source")" && pwd)"
+  _source="$(readlink "$_source")"
+  [[ "$_source" != /* ]] && _source="${_dir}/${_source}"
+done
+AFB_SCRIPT_DIR="$(cd -P "$(dirname "$_source")" && pwd)"
+
+export AFB_ROOT="${AFB_SCRIPT_DIR}"
+export AFB_LIB_DIR="${AFB_ROOT}/lib"
+export DOT_CLAUDE="${AFB_ROOT}/dot_claude"
+
+# shellcheck source=lib/common.sh
+source "${AFB_LIB_DIR}/common.sh"
+
+afb_usage() {
+  cat <<'USAGE'
+Usage: afb <command> [options]
+
+Commands:
+  install     Set up Claude Code accounts (symlinks, settings.json, aliases)
+  uninstall   Remove all managed symlinks and daemon
+  check       Read-only sync verification (exits 1 on divergence)
+  work        Interactive tmux session menu or direct launch
+  wt          Git worktree+branch lifecycle (create|list|clean)
+  rate        Rate limit monitoring and daemon management
+
+Options vary by command. Run 'afb <command> --help' for details.
+USAGE
+}
+
+# Subcommand dispatch
+SUBCOMMAND="${1:-}"
+shift || true
+
+case "$SUBCOMMAND" in
+  ""|--help|-h)
+    afb_usage
+    exit 0
+    ;;
+  install)
+    source "${AFB_LIB_DIR}/install.sh"
+    afb_install_main "install" "$@"
+    ;;
+  uninstall|check)
+    afb_preflight
+    source "${AFB_LIB_DIR}/install.sh"
+    afb_install_main "$SUBCOMMAND" "$@"
+    ;;
+  work)
+    afb_preflight
+    source "${AFB_LIB_DIR}/work.sh"
+    afb_work_main "$@"
+    ;;
+  wt)
+    afb_preflight
+    source "${AFB_LIB_DIR}/wt.sh"
+    afb_wt_main "$@"
+    ;;
+  rate)
+    afb_preflight
+    source "${AFB_LIB_DIR}/rate.sh"
+    afb_rate_main "$@"
+    ;;
+  *)
+    echo "afb: unknown command '${SUBCOMMAND}'" >&2
+    echo "Run 'afb' or 'afb --help' for usage." >&2
+    exit 1
+    ;;
+esac
