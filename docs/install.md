@@ -21,6 +21,7 @@ cd ~/Projects/claude-skills
 ### 2. Run the installer
 
 ```bash
+chmod +x ./afb
 ./afb install
 ```
 

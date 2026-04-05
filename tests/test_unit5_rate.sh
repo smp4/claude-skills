@@ -87,7 +87,7 @@ anthropic-ratelimit-unified-weekly-reset: 2026-04-12T00:00:00Z
 content-type: application/json
 EOF
   # AFB_RATE_FIXTURE_HEADERS tells rate.sh to use the fixture instead of real curl
-  out=$(AFB_ACCOUNTS_FILE="$ACCOUNTS_FILE" AFB_RATE_FIXTURE_HEADERS="$FIXTURE" bash "$AFB" rate --refresh 2>&1)
+  out=$(AFB_ACCOUNTS_FILE="$ACCOUNTS_FILE" AFB_RATE_FIXTURE_HEADERS="$FIXTURE" AFB_RATE_FIXTURE_TOKEN="mock-token" bash "$AFB" rate --refresh 2>&1)
   rc=$?
   status_file="${FAKE_HOME}/afb/rate-status.json"
   if [[ "$rc" -eq 0 ]] && [[ -f "$status_file" ]]; then
@@ -124,7 +124,7 @@ HTTP/2 200
 content-type: application/json
 x-request-id: abc123
 EOF
-  out=$(AFB_ACCOUNTS_FILE="$ACCOUNTS_FILE" AFB_RATE_FIXTURE_HEADERS="$FIXTURE" bash "$AFB" rate --refresh 2>&1)
+  out=$(AFB_ACCOUNTS_FILE="$ACCOUNTS_FILE" AFB_RATE_FIXTURE_HEADERS="$FIXTURE" AFB_RATE_FIXTURE_TOKEN="mock-token" bash "$AFB" rate --refresh 2>&1)
   rc=$?
   status_file="${FAKE_HOME}/afb/rate-status.json"
   if [[ "$rc" -eq 0 ]] && [[ -f "$status_file" ]]; then
@@ -147,7 +147,7 @@ EOF
 test_rate_refresh_network_failure() {
   setup_env
   # AFB_RATE_FIXTURE_CURL_RC=6 simulates curl network error
-  out=$(AFB_ACCOUNTS_FILE="$ACCOUNTS_FILE" AFB_RATE_FIXTURE_CURL_RC=6 bash "$AFB" rate --refresh 2>&1)
+  out=$(AFB_ACCOUNTS_FILE="$ACCOUNTS_FILE" AFB_RATE_FIXTURE_CURL_RC=6 AFB_RATE_FIXTURE_TOKEN="mock-token" bash "$AFB" rate --refresh 2>&1)
   rc=$?
   status_file="${FAKE_HOME}/afb/rate-status.json"
   if [[ "$rc" -eq 0 ]] && [[ -f "$status_file" ]]; then
@@ -183,7 +183,7 @@ EOF
   mkdir -p "$MOCK_BIN"
   cat > "${MOCK_BIN}/security" <<'EOF'
 #!/usr/bin/env bash
-echo "mock-oauth-token-12345"
+echo '{"claudeAiOauth":{"accessToken":"mock-oauth-token-12345","expiresAt":9999999999999}}'
 EOF
   chmod 755 "${MOCK_BIN}/security"
 
@@ -217,7 +217,7 @@ anthropic-ratelimit-unified-weekly-reset: 2026-04-12T00:00:00Z
 EOF
   # Write .credentials.json to fake claude_home
   cat > "${FAKE_HOME}/.credentials.json" <<'EOF'
-{"claudeAiOauth": {"accessToken": "mock-linux-token-99999"}}
+{"claudeAiOauth": {"accessToken": "mock-linux-token-99999", "expiresAt": 9999999999999}}
 EOF
   out=$(AFB_ACCOUNTS_FILE="$ACCOUNTS_FILE" AFB_RATE_FIXTURE_HEADERS="$FIXTURE" AFB_PLATFORM_OVERRIDE=linux bash "$AFB" rate --refresh 2>&1)
   rc=$?
@@ -269,7 +269,7 @@ anthropic-ratelimit-unified-weekly-remaining: 100000
 anthropic-ratelimit-unified-weekly-reset: 2026-04-12T00:00:00Z
 EOF
   CALL_LOG="${TMP}/called"
-  out=$(AFB_ACCOUNTS_FILE="$ACCOUNTS_FILE" AFB_RATE_FIXTURE_HEADERS="$FIXTURE" AFB_RATE_CALL_LOG="$CALL_LOG" bash "$AFB" rate --refresh 2>&1)
+  out=$(AFB_ACCOUNTS_FILE="$ACCOUNTS_FILE" AFB_RATE_FIXTURE_HEADERS="$FIXTURE" AFB_RATE_FIXTURE_TOKEN="mock-token" AFB_RATE_CALL_LOG="$CALL_LOG" bash "$AFB" rate --refresh 2>&1)
   # If interval hasn't elapsed, the API should NOT have been called
   if [[ ! -f "$CALL_LOG" ]]; then
     pass "test_rate_interval_skips"

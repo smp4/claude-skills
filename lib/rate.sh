@@ -18,11 +18,8 @@ _afb_cron_file() {
 
 # --- Token retrieval ---------------------------------------------------------
 
-afb_rate_get_token() {
-  local claude_home="$1"
-  local platform
-  platform="$(_afb_platform)"
-
+_afb_rate_read_creds() {
+  local platform="$1" claude_home="$2"
   case "$platform" in
     macos)
       security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null
@@ -33,21 +30,115 @@ afb_rate_get_token() {
         echo "Error: .credentials.json not found at ${creds}" >&2
         return 1
       fi
-      _afb_timeout 2 python3 -c "
-import json, sys
-d = json.load(open(sys.argv[1]))
-token = d.get('claudeAiOauth', {}).get('accessToken') or d.get('token')
-if not token:
-    print('Error: no token in .credentials.json', file=sys.stderr)
-    sys.exit(1)
-print(token)
-" "$creds"
+      cat "$creds"
       ;;
     *)
       echo "Error: unknown platform '${platform}'" >&2
       return 1
       ;;
   esac
+}
+
+_afb_rate_write_creds() {
+  local platform="$1" claude_home="$2" new_json="$3"
+  case "$platform" in
+    macos)
+      security delete-generic-password -s "Claude Code-credentials" >/dev/null 2>&1 || true
+      security add-generic-password -s "Claude Code-credentials" -a "Claude Code" -w "$new_json"
+      ;;
+    linux)
+      local creds="${claude_home}/.credentials.json"
+      printf '%s\n' "$new_json" > "$creds"
+      chmod 600 "$creds"
+      ;;
+  esac
+}
+
+_afb_rate_refresh_token() {
+  local refresh_token="$1"
+  local client_id="9d1c250a-e61b-44d9-88ed-5944d1962f5e"
+  local token_url="https://platform.claude.com/v1/oauth/token"
+
+  curl -sf --max-time 10 -X POST "$token_url" \
+    -H "Content-Type: application/json" \
+    -d "{\"grant_type\":\"refresh_token\",\"refresh_token\":\"${refresh_token}\",\"client_id\":\"${client_id}\"}"
+}
+
+afb_rate_get_token() {
+  # Test fixture: bypass real token retrieval
+  if [[ -n "${AFB_RATE_FIXTURE_TOKEN:-}" ]]; then
+    echo "$AFB_RATE_FIXTURE_TOKEN"
+    return 0
+  fi
+
+  local claude_home="$1"
+  local platform
+  platform="$(_afb_platform)"
+
+  local raw
+  raw="$(_afb_rate_read_creds "$platform" "$claude_home")" || return 1
+
+  # Extract token; check expiry
+  local output
+  output="$(_afb_timeout 2 python3 -c "
+import json, sys, time
+d = json.loads(sys.argv[1])
+oauth = d.get('claudeAiOauth', {})
+token = oauth.get('accessToken') or d.get('token')
+expires_at = oauth.get('expiresAt', 0)
+
+if not token:
+    print('Error: no token in credentials', file=sys.stderr)
+    sys.exit(1)
+
+# Expired or within 5 min of expiry?
+now_ms = int(time.time() * 1000)
+if expires_at and now_ms >= (expires_at - 300000):
+    rt = oauth.get('refreshToken')
+    if not rt:
+        print('Error: token expired, no refresh token', file=sys.stderr)
+        sys.exit(1)
+    print('REFRESH:' + rt)
+else:
+    print(token)
+" "$raw" 2>/tmp/afb_token_err)" || return 1
+
+  if [[ "$output" != REFRESH:* ]]; then
+    echo "$output"
+    return 0
+  fi
+
+  # Token expired — refresh it
+  local refresh_token="${output#REFRESH:}"
+  local refreshed
+  refreshed="$(_afb_rate_refresh_token "$refresh_token")"
+  if [[ $? -ne 0 || -z "$refreshed" ]]; then
+    echo "Error: token refresh failed" >&2
+    return 1
+  fi
+
+  # Update stored credentials with new token
+  local new_json
+  new_json="$(_afb_timeout 2 python3 -c "
+import json, sys, time
+d = json.loads(sys.argv[1])
+r = json.loads(sys.argv[2])
+oauth = d.get('claudeAiOauth', {})
+oauth['accessToken'] = r['access_token']
+if 'refresh_token' in r:
+    oauth['refreshToken'] = r['refresh_token']
+oauth['expiresAt'] = int(time.time() * 1000) + r.get('expires_in', 3600) * 1000
+d['claudeAiOauth'] = oauth
+print(json.dumps(d))
+" "$raw" "$refreshed")" || return 1
+
+  _afb_rate_write_creds "$platform" "$claude_home" "$new_json"
+
+  # Return new access token
+  _afb_timeout 2 python3 -c "
+import json, sys
+print(json.loads(sys.argv[1])['access_token'])
+" "$refreshed"
 }
 
 # --- API call ----------------------------------------------------------------
