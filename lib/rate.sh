@@ -58,10 +58,34 @@ _afb_rate_refresh_token() {
   local refresh_token="$1"
   local client_id="9d1c250a-e61b-44d9-88ed-5944d1962f5e"
   local token_url="https://platform.claude.com/v1/oauth/token"
+  local http_code body tmp
 
-  curl -sf --max-time 10 -X POST "$token_url" \
+  tmp="$(mktemp)"
+  http_code="$(curl -s -o "$tmp" -w '%{http_code}' --max-time 10 \
+    -X POST "$token_url" \
     -H "Content-Type: application/json" \
-    -d "{\"grant_type\":\"refresh_token\",\"refresh_token\":\"${refresh_token}\",\"client_id\":\"${client_id}\"}"
+    -d "{\"grant_type\":\"refresh_token\",\"refresh_token\":\"${refresh_token}\",\"client_id\":\"${client_id}\"}")"
+  body="$(cat "$tmp")"
+  command rm -f "$tmp"
+
+  if [[ "$http_code" == "429" ]]; then
+    sleep 3
+    tmp="$(mktemp)"
+    http_code="$(curl -s -o "$tmp" -w '%{http_code}' --max-time 10 \
+      -X POST "$token_url" \
+      -H "Content-Type: application/json" \
+      -d "{\"grant_type\":\"refresh_token\",\"refresh_token\":\"${refresh_token}\",\"client_id\":\"${client_id}\"}")"
+    body="$(cat "$tmp")"
+    command rm -f "$tmp"
+  fi
+
+  if [[ "$http_code" -ge 200 && "$http_code" -lt 300 && -n "$body" ]]; then
+    echo "$body"
+    return 0
+  fi
+
+  echo "Error: token refresh failed (HTTP ${http_code}: ${body})" >&2
+  return 1
 }
 
 afb_rate_get_token() {
@@ -110,12 +134,15 @@ else:
 
   # Token expired — refresh it
   local refresh_token="${output#REFRESH:}"
-  local refreshed
-  refreshed="$(_afb_rate_refresh_token "$refresh_token")"
+  local refreshed refresh_err
+  refresh_err="$(mktemp)"
+  refreshed="$(_afb_rate_refresh_token "$refresh_token" 2>"$refresh_err")"
   if [[ $? -ne 0 || -z "$refreshed" ]]; then
-    echo "Error: token refresh failed" >&2
+    cat "$refresh_err" >&2
+    command rm -f "$refresh_err"
     return 1
   fi
+  command rm -f "$refresh_err"
 
   # Update stored credentials with new token
   local new_json
