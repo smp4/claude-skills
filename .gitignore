@@ -211,3 +211,6 @@ todo.md
 domain-driven-skills-context/
 accounts.json
 aliases.sh
+# afb: bash library dir (not a Python lib)
+!/lib/
+!/lib/**
