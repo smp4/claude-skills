@@ -21,7 +21,7 @@ Claude Code infrastructure management is split across loose scripts (`install.sh
 - Remote/k8s deployment
 - GUI or TUI beyond simple numbered menus
 - Non-bash implementation
-- Non-macOS/Linux platform support (Windows deferred)
+- Non-macOS/Linux platform support (Windows not expected to be needed)
 - launchd on Linux or cron on macOS (use platform-native scheduler)
 - Replacing Claude Code itself or wrapping its CLI
 
@@ -72,13 +72,14 @@ Claude Code infrastructure management is split across loose scripts (`install.sh
 - FR-21: `afb rate --refresh` performs live API check for all accounts, updates status files
 - FR-22: `afb rate --daemon install` installs platform-native scheduled task (launchd plist on macOS, cron on Linux) with user approval prompt
 - FR-23: `afb rate --daemon remove` removes the scheduled task
-- FR-24: Daemon runs `afb rate --refresh` at each account's configured interval (default 10min)
+- FR-24: Daemon creates one crontab entry (Linux) or launchd plist (macOS) per account at its configured interval (default 10min)
 - FR-25: On macOS, extract OAuth token from Keychain via `security` command
 - FR-26: On Linux, read OAuth token from `${claude_home}/.credentials.json`
 - FR-27: Rate check makes minimal API call (1 max token) to `api.anthropic.com/v1/messages` with `anthropic-beta: oauth-2025-04-20` header
 - FR-28: Parse `anthropic-ratelimit-unified-*-utilization` and status headers from response
 - FR-29: Write status to `${claude_home}/afb/rate-status.json`
 - FR-30: On header parse failure, log error in status file (`"error": "<message>"`), do not crash
+- FR-33: `afb rate --self-test` checks that recent refreshes returned data (not all errors); warns if API headers may have changed
 
 ### accounts.json extensions
 
@@ -106,7 +107,7 @@ afb work [<name>]
 afb wt create <name>
 afb wt list
 afb wt clean <name> [--force]
-afb rate [--refresh]
+afb rate [--refresh] [--self-test]
 afb rate --daemon install
 afb rate --daemon remove
 ```
@@ -181,7 +182,7 @@ afb rate --daemon remove
 - [ ] AC-14: Rate header failure logged in status file, does not crash
 - [ ] AC-15: Per-account `rate_interval` respected by daemon
 - [ ] AC-16: Non-install commands exit 2 with instructions when `accounts.json` missing
-- [ ] AC-17: `install.sh` and `c.sh` can be removed after migration verified
+- [ ] AC-17: `install.sh` and `c.sh` deleted (not in prod, git history preserves them)
 - [ ] AC-18: docs/install.md, docs/usage.md, docs/uninstall.md exist and are accurate
 - [ ] AC-19: docs note that rate monitoring uses beta/undocumented headers that may break
 
