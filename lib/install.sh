@@ -60,7 +60,9 @@ _afb_settings_diff_and_merge() {
   local claude_home="$1" skip_diff="$2" mode="$3"
   local settings_file="${claude_home}/settings.json"
 
-  DOT_CLAUDE_PATH="$DOT_CLAUDE" _afb_timeout 2 python3 - "$settings_file" "$claude_home" "$skip_diff" "$mode" <<PYEOF
+  local _py_tmp
+  _py_tmp="$(mktemp /tmp/afb_settings_XXXXXX.py)"
+  cat > "$_py_tmp" <<'PYEOF'
 import json, sys, os
 
 settings_path = sys.argv[1]
@@ -92,12 +94,15 @@ for k in controlled_keys:
         diffs.append((k, ev, tv))
 
 if diffs and not skip_diff and mode != "check":
-    print(f"\\nSettings diff for {settings_path}:")
+    print(f"\nSettings diff for {settings_path}:")
     for k, ev, tv in diffs:
         print(f"  {k}:")
         print(f"    existing: {json.dumps(ev, indent=2)}")
         print(f"    template: {json.dumps(tv, indent=2)}")
-    resp = input("\\nApply template values for controlled fields? [y/N] ").strip().lower()
+    sys.stdout.write("\nApply template values for controlled fields? [y/N] ")
+    sys.stdout.flush()
+    with open("/dev/tty") as tty:
+        resp = tty.readline().strip().lower()
     if resp != "y":
         print("Aborted.")
         sys.exit(1)
@@ -124,14 +129,22 @@ for k in controlled_keys:
 
 with open(settings_path + ".bak", "w") as f:
     json.dump(existing, f, indent=2)
-    f.write("\\n")
+    f.write("\n")
 
 with open(settings_path, "w") as f:
     json.dump(merged, f, indent=2)
-    f.write("\\n")
+    f.write("\n")
 
 print(f"  Updated: settings.json (backup → settings.json.bak)")
 PYEOF
+  if [[ "$mode" == "check" ]]; then
+    DOT_CLAUDE_PATH="$DOT_CLAUDE" _afb_timeout 2 python3 "$_py_tmp" "$settings_file" "$claude_home" "$skip_diff" "$mode"
+  else
+    DOT_CLAUDE_PATH="$DOT_CLAUDE" python3 "$_py_tmp" "$settings_file" "$claude_home" "$skip_diff" "$mode"
+  fi
+  local _exit=$?
+  rm -f "$_py_tmp"
+  return $_exit
 }
 
 # --- Per-account operations --------------------------------------------------

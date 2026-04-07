@@ -3,7 +3,10 @@
     "allow": [
       "Read(~/.claude/**)",
       "Read(~/Projects/{dse,claude-gen,pstar,pstar_meta,pstar_ref,sysand_index,syside}/**)",
-      "Write(~/Projects/{dse,claude-gen,pstar,pstar_meta,pstar_ref,sysand_index,syside}/**)"
+      "Write(~/Projects/{dse,claude-gen,pstar,pstar_meta,pstar_ref,sysand_index,syside}/**)",
+      "Bash(gh *)",
+      "Bash(curl *)",
+      "WebFetch"
     ],
     "deny": [
       "Read(~/**)",
@@ -54,5 +57,11 @@
         "repo": "mozilla-ai/cq"
       }
     }
+  },
+  "env": {
+    "DISABLE_TELEMETRY": "1",
+    "DISABLE_ERROR_REPORTING": "1",
+    "DISABLE_BUG_COMMAND": "1",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"
   }
 }
