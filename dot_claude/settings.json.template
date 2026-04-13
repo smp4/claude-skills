@@ -12,6 +12,7 @@
       "Read(~/**)",
       "Write(~/**)",
       "Read(**/.env)",
+      "Read(**/.envrc)",
       "Read(**/.env.*)",
       "Read(**/secrets/**)",
       "Read(**/.aws/**)",
