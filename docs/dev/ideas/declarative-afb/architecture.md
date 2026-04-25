@@ -367,7 +367,7 @@ afb init && afb install && afb sync
 In Go tests: `os.Setenv` + `t.TempDir()`. Tests are hermetic — no shared state between test cases.
 
 Wrapped as `afb test <command>` — runs any afb command in an isolated HOME.
-
+> COMMENT: i think safer that afb is tested using the same isolation mechanism that production uses. consistency
 ### Production agent runs: Containers
 
 For running actual AI agents with security isolation, containers are the stronger strategy:
@@ -387,7 +387,12 @@ For running actual AI agents with security isolation, containers are the stronge
 
 **Not required now** — evaluate when running 3+ agents regularly. HOME override suffices for afb's own dev/test cycle.
 
+> COMMENT: if we're are developing for containers for isolation, we might as well use it for afb testing and dev too, instead of a second system
+
 > CHALLENGE 4: Container isolation for prod agents was presented as "just mount a few things" but the real engineering cost is higher. Claude Code's OAuth auth flow may try to write back to `~/.claude/` (read-only mount could break it). File watching through Docker volume mounts on macOS has known performance issues (vfs overhead). TTY management for interactive agents in containers is fiddly. OpenCode may have similar issues. This is a significant engineering effort to get right, not a Dockerfile and a few mount flags. Honest assessment: expect 1-2 weeks of debugging per runtime to get containers working reliably, not an afternoon.
+
+> COMMENT: there are many examples of running open code in containers, see https://docs.docker.com/ai/sandboxes/agents/opencode/. for claude see https://code.claude.com/docs/en/devcontainer. is it really necessary to mount project repos into the container from the host? can't we have a project container, and we run the agent harness inside the container? the container is fully self contained with harness and project code? harness is customised to the project, they live side by side. shared resources like mcp servers can be shared docker containers or shared directly running off the host. there must be a straight forward way analogous to code development with dev containers. the advantage is we can then easily also start developing applications that themselves have databases front end back end from containers. the harness lives in the same ecosystem. dies the macos vfs over head really matter at single dev scale? if so, we can just operate off a linux box.
+
 
 ### Limitations
 

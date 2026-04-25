@@ -50,6 +50,7 @@ afb.toml declares components with lifecycle hooks:
 | health | Check if component is running/available | No |
 
 > CHALLENGE 1: update/uninstall as required forces boilerplate on trivial components. Napkin is a skill file — `uninstall = "echo 'nothing to uninstall'"` is pure ceremony. Components like shared prompt templates have no binary to update or remove. Only `install` should be required. The rest should be optional — `afb uninstall` skips components without an uninstall hook (logging a warning). Required hooks create friction for the simplest components and don't add safety — if the user forgets an uninstall hook for a real tool, they'll discover it when they try to uninstall. Consider: install=required, update/uninstall=required-if-applicable or just optional.
+> COMMENT: ok don't make it required
 
 Hooks are shell commands or paths to scripts in the scripts directory. afb expands manifest variables before execution.
 
