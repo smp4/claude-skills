@@ -1,6 +1,6 @@
 # AFB Specification
 
-> Status: Draft
+> Status: Draft (rev 2)
 > Date: 2026-04-25
 > Companion: architecture.md
 > Supersedes: synthesis.md (which remains as rationale/research record)
@@ -13,69 +13,91 @@ Core problem: a solo dev using Claude Code, OpenCode, and potentially other runt
 
 ## Terminology
 
-| Term          | Definition                                                                       |
-| ------------- | -------------------------------------------------------------------------------- |
-| **Component** | External tool managed by afb (e.g., LNAI, CASS, mcp-memory-service)              |
-| **Layer**     | A source of config files with a priority. Layers compose to produce final config |
-| **Target**    | A runtime receiving generated config (Claude Code, OpenCode, Codex)              |
-| **Manifest**  | `afb.toml` — declarative description of desired harness state                    |
-| **Script**    | User-defined shell script stored alongside the manifest                          |
-| **Compose**   | Merging layers into a single config directory                                    |
-| **Sync**      | Translating composed config to runtime-native formats (delegated to LNAI)        |
+| Term | Definition |
+|------|-----------|
+| **Component** | External tool managed by afb (e.g., LNAI, CASS, mcp-memory-service) |
+| **Layer** | A source of config files with a priority. Layers compose to produce final config |
+| **Target** | A runtime receiving generated config (Claude Code, OpenCode, Codex) |
+| **Manifest** | `afb.toml` — declarative description of desired harness state |
+| **Lock** | `afb.lock` — records installed component versions and layer commits (see Challenge 2) |
+| **Script** | User-defined shell script stored alongside the manifest |
+| **Compose** | Merging layers into a single config directory |
+| **Sync** | Translating composed config to runtime-native formats (delegated to LNAI) |
 
 ## Constraints
 
 - Solo dev, 1-2 Pro subscriptions, no API keys (initially)
-- MacBook Air M2 16GB (primary dev), Linux 32GB (secondary/test)
+- MacBook Air M2 16GB + Linux 32GB available; Linux can serve as primary for heavier workloads
 - FOSS only
 - macOS + Linux
 - Project-level config; user-level config is ephemeral/vanilla
 - 2-10 concurrent agents maximum
 - No database servers (SQLite/files only for all stateful components)
 - Must be testable by LLM agents during development (lesson from ACFS)
->  COMMENT: linux 32gb can be primary. 
+
 ## Functional Requirements
 
 ### FR1: Manifest-Driven Component Management
 
 afb.toml declares components with lifecycle hooks:
 
-| Hook      | Purpose                                 | Required? |
-| --------- | --------------------------------------- | --------- |
-| install   | Install the component                   | Yes       |
-| update    | Update to specified version             | No        |
-| uninstall | Remove the component and clean up       | No        |
-| backup    | Back up component state                 | No        |
-| health    | Check if component is running/available | No        |
-> COMMENT: update and uninstall required.
+| Hook | Purpose | Required? |
+|------|---------|-----------|
+| install | Install the component | Yes |
+| update | Update to specified version | Yes |
+| uninstall | Remove the component and clean up | Yes |
+| backup | Back up component state | No |
+| health | Check if component is running/available | No |
+
+> CHALLENGE 1: update/uninstall as required forces boilerplate on trivial components. Napkin is a skill file — `uninstall = "echo 'nothing to uninstall'"` is pure ceremony. Components like shared prompt templates have no binary to update or remove. Only `install` should be required. The rest should be optional — `afb uninstall` skips components without an uninstall hook (logging a warning). Required hooks create friction for the simplest components and don't add safety — if the user forgets an uninstall hook for a real tool, they'll discover it when they try to uninstall. Consider: install=required, update/uninstall=required-if-applicable or just optional.
+
 Hooks are shell commands or paths to scripts in the scripts directory. afb expands manifest variables before execution.
+
+**Commands that execute hooks**:
+- `afb install` — runs install hook for all enabled components, writes `afb.lock`
+- `afb uninstall <name>` — runs uninstall hook. User then sets enabled=false in afb.toml manually
+- `afb backup` — runs backup hook for each component that defines one
+- `afb status` — runs health hook for enabled components, compares afb.lock vs afb.toml for version drift
+
+**Install failure**: If a hook fails, afb logs the error (exit code + stderr), continues with remaining components, and records the failure in afb.lock. No auto-rollback — running uninstall after a partial install is fragile. User runs `afb uninstall <component>` manually to clean up.
 
 ### FR2: Layered Config Composition
 
-- Layers declared in afb.toml with git URL (or local path) and integer priority
+- Layers declared in afb.toml with git URL (or local path), integer priority, and optional `ref` (branch/tag/commit)
 - Higher priority wins on conflict
 - Default merge strategies by file type:
   - Structured files (.yaml, .json, .toml): deep merge, last-in wins for leaf values
   - All other files (.md, .txt, etc.): overwrite
 - Per-layer strategy override available (merge or overwrite for all files in that layer)
-- Project-specific config (`.afb/config/`) is the implicit highest-priority layer
+- Project-specific config (`.afb/project/`) is the implicit highest-priority layer
 - `afb sync` composes layers into `.ai/`, then runs the configured sync command (default: `lnai sync`)
-> COMMENT: probably need an `afb validate` or `afb check` - can we leverage something from lnai? or see what lnai uses, and copy it? 
+
 ### FR3: Drift Detection
 
-`afb diff` generates what `afb sync` would produce, diffs against current `.ai/` and runtime config dirs. Reports divergence per file.
+`afb diff` detects divergence at two levels:
+
+1. **Composition drift**: current `.ai/` vs what `afb sync` would produce
+2. **Runtime drift**: current `.claude/`, `.opencode/`, `.mcp.json` vs what LNAI would generate from composed `.ai/` (uses `lnai sync --dry-run`)
+
+> CHALLENGE 7: LNAI dry-run is unverified. The research doc (research-results.md) explicitly states drift detection is "Not implemented" in LNAI — `detect()` and `import()` return `false`/`null` for every plugin. `lnai validate` exists (syntax checking), but `lnai sync --dry-run` may not. If it doesn't, Stage 2 requires the temp-dir workaround (compose to temp, run `lnai sync` there with HOME override, diff output). This needs verification against actual LNAI before building on it.
+
+Runtime drift catches changes made directly by runtimes (e.g., Claude Code adding an MCP server via UI). LNAI symlinks some files and copies others; only copied files can diverge from `.ai/`. Reports divergence per file.
 
 ### FR4: Upstream Push
 
-`afb push [layer]` pushes local changes in a layer dir back to its upstream git repo.
-> COMMENT: `afb push` checks all layers an dpushes back for all layers.
+`afb push` pushes local changes in all layer dirs back to their upstream git repos. `afb push <layer>` for a specific layer.
+
 ### FR5: Script Runner
 
 `afb run <name>` executes a script from the configured scripts directory. Convenience only — no pre/post hooks, no lifecycle.
 
 ### FR6: Test Isolation
 
-Deploy and test a harness without affecting any production harness on the same machine. Runtimes auto-discover config in well-known locations (`$HOME`, project dirs), so isolation requires environment-level separation (HOME/XDG overrides, Devbox, or containers).
+Deploy and test a harness without affecting any production harness on the same machine. Runtimes auto-discover config in well-known locations, so isolation requires environment-level separation.
+
+Two-tier strategy:
+1. **afb testing**: HOME/XDG override via `afb test <command>`
+2. **Agent execution**: Container isolation for secure permissive-mode runs (future — evaluate when running 3+ agents)
 
 Must be possible for an LLM agent (Claude) to deploy and verify afb during development without manual intervention.
 
@@ -87,16 +109,43 @@ Structured logs to stderr. Log level via `AFB_LOG_LEVEL` env var. 12-factor: log
 
 `afb backup` runs the backup hook for every component that defines one. Manifest variables (e.g., `${backup_dir}`) are expanded.
 
+### FR9: Validation
+
+`afb validate` checks:
+1. afb.toml syntax and schema validity
+2. Composed `.ai/` directory validity — delegates to `lnai validate`
+
+Runs automatically as final step of `afb sync`. Can be invoked standalone.
+
+> CHALLENGE 5: Validation running AFTER sync is wrong. By the time validation runs, LNAI has already written runtime configs. If validation fails, invalid generated config is sitting in `.claude/` and `.opencode/`. Validation should run AFTER compose but BEFORE the sync command — catch problems before they propagate to runtime dirs. Proposed order: compose → validate → sync (not compose → sync → validate).
+
+### FR10: Dry-Run Testing
+
+`afb test [command]` runs any afb command in an isolated environment (temporary HOME/XDG dirs). Validates that hooks, composition, and sync work correctly without affecting production config. Environment is torn down after the test.
+
+> CHALLENGE 3: `afb test` is a thin wrapper over `HOME=/tmp/xxx afb <command>`. A shell alias or one-liner achieves the same. A dedicated command adds code, tests, and docs for what's essentially an env var override. For a single-user tool, discoverability isn't a strong argument. Consider deferring this from v1 — document the HOME override trick instead, promote to a command only if users (you) actually use it regularly.
+
+### FR11: Remote & Session Compatibility
+
+afb must work over SSH (including Tailscale SSH) and inside tmux sessions. As a CLI that reads files and runs shell commands, this is largely inherent — but the following must hold:
+
+- No interactive prompts or GUI dependencies (all input via flags, env vars, or manifest)
+- No localhost-only assumptions (e.g., hardcoded 127.0.0.1 for any service)
+- Log output usable in headless/detached sessions (structured stderr, no ANSI unless TTY detected)
+- Component hooks must also be non-interactive (user's responsibility, but afb should document this constraint)
+
+Remote harness management (running afb on a remote machine via SSH to manage containers or agents there) is a natural workflow. afb does not need a remote execution mode — the user SSHes in and runs afb locally on the remote machine. The project repo and afb.toml are on the remote machine (cloned via git).
+
 ## Non-Functional Requirements
 
-| ID   | Requirement                                                                                                         |
-| ---- | ------------------------------------------------------------------------------------------------------------------- |
+| ID | Requirement |
+|----|-------------|
 | NFR1 | **Composability** — enabling/disabling a component + `afb sync` must not break the system and must leave no residue |
-| NFR2 | **Declarative** — afb.toml describes desired state; afb converges reality to match                                  |
-| NFR3 | **Lightweight** — single Go binary, no runtime dependencies beyond git                                              |
-| NFR4 | **Fast** — CLI operations complete in seconds                                                                       |
-| NFR5 | **Testable** — formalized Go test suite, CI-compatible                                                              |
-| NFR6 | **Portable** — macOS + Linux from the same codebase                                                                 |
+| NFR2 | **Declarative** — afb.toml describes desired state; afb converges reality to match |
+| NFR3 | **Lightweight** — single Go binary, no runtime dependencies beyond git |
+| NFR4 | **Fast** — CLI operations complete in seconds |
+| NFR5 | **Testable** — formalized Go test suite, CI-compatible |
+| NFR6 | **Portable** — macOS + Linux from the same codebase |
 
 ## Non-Goals
 
@@ -118,8 +167,10 @@ Synchronise unified config across Claude Code, OpenCode, and other runtimes. LNA
 
 Memory tools (CASS, mcp-memory-service, cq, Napkin, etc.) are managed as afb components. AFB installs, updates, backs them up. Memory architecture (L1 session search → L2 semantic store → L3 learning store → L4 repo map) is documented separately in `mem/architecture.md`. AFB treats memory tools as opaque components.
 
-Cross-machine memory sync: automated nightly backup of SQLite files to shared storage (rsync, git, or similar). Restore on other machines. Append-mostly data minimises conflicts. Mechanism TBD (see unresolved questions).
-> COMMENT: key here is that the philosophy is eventual consistency is acceptable.
+Cross-machine memory sync: automated nightly backup of SQLite files to shared git repo. Restore on other machines. Philosophy: **eventual consistency is acceptable** — memory data is append-mostly, conflicts are rare for a solo dev.
+
+> CHALLENGE 9: "Append-mostly" doesn't prevent duplicates — it guarantees them. If you work on the same task from both machines in one day, both machines add memories about the same topic. Nightly sync merges both sets, producing duplicate or near-duplicate entries. For a solo dev this may be tolerable (memory tools should handle redundant context gracefully), but it's a real gap. Consider: is deduplication the memory tool's responsibility, afb's, or the user's? If the memory tool doesn't dedup, you'll accumulate noise over time.
+
 ### Concern 3: Orchestration (deferred)
 
 Gas City is the primary candidate. AFB installs and configures it as a component. Workflow enforcement (ATDD stages, review gates) is Gas City's responsibility. Evaluate at Phase 3.
@@ -136,48 +187,39 @@ AFB itself. The manifest + CLI. Gets built and dogfooded first.
 
 Architecture is successful when:
 
-1. Adding a runtime to a project = edit config + `afb sync`
-2. Removing a component = edit afb.toml + `afb sync` → no residue in runtime configs
-3. Shared config change propagates via `git pull` in layer repo + `afb sync`
-4. Config drift detectable via `afb diff`
+1. Adding a runtime to a project = edit `.afb/project/config.yaml` + `afb sync`
+2. Removing a component = `afb uninstall <name>` + set enabled=false in afb.toml + `afb sync` → no residue in runtime configs
+3. Shared config change propagates via `afb layer pull` + `afb sync`
+4. Config drift detectable via `afb diff` (both composition and runtime levels)
 5. Fresh machine setup = clone project + `afb install` + `afb sync`
 6. All stateful components backup with `afb backup`
-7. Test harness deployable in isolation without clobbering production
-> COMMENT: first time `afb install` is mentioned. what does it do?
+7. Test harness deployable in isolation via `afb test sync` without clobbering production
+8. `afb.lock` records installed state; `afb status` reports drift between declared and actual
+
 ## Phased Adoption
 
 ### Phase 1: Deployment Infra + Config Sync
 
-Build afb CLI (init, install, sync, diff). Implement layer composition. Integrate LNAI. Dogfood with Claude Code + OpenCode on one project. Validate composability guarantee.
-> COMMENT: dogfood on afb itself
+Build afb CLI (init, install, sync, diff, validate, test). Implement layer composition. Integrate LNAI. Dogfood with Claude Code + OpenCode on one project. Validate composability guarantee.
+
 ### Phase 2: Memory Foundation
 
-Add memory tools as components (CASS, Napkin, one semantic store). Validate install/backup hooks. Test cross-runtime memory access via MCP.
+Add memory tools as components (CASS, Napkin, one semantic store). Validate install/update/uninstall/backup hooks. Test cross-runtime memory access via MCP.
 
 ### Phase 3: Orchestration Evaluation
 
-Install Gas City as component. Test workflow enforcement. Evaluate pack system overlap with afb layers. Fallback: beads + hooks.
+Install Gas City as component. Test workflow enforcement. Evaluate pack system overlap with afb layers. Evaluate whether Gas City subsumes HUD. Fallback: beads + hooks.
 
 ### Phase 4: Polish
 
-`afb push`, `afb status`, cross-machine sync, CI integration.
+`afb push`, `afb status`, cross-machine sync via shared git repo, CI integration, container isolation template, metrics.
 
 ## Unresolved Questions
 
 1. Array merge semantics — replace whole array (current default) or append items?
-> COMMENT: i assume you mean in the config layer composition. append. what would be the downside?
 2. `afb adopt <file> <layer>` — command for cherry-picking drift back to a layer?
-> COMMENT: could be useful yes, for whole of file adoption, and if the user only wants to take individual lines out of a file, they can do that manually.
-1. Per-file merge strategy overrides — needed, or per-layer sufficient?
-> COMMENT: start with per layer. put per-file in list of future work
-2. afb.toml inheritance — project extends user-level afb.toml for cross-project defaults?
-> COMMENT: this is what i was trying to avoid. but if we have machine/ user-level common components (MCP servers), then we probably need a user level manifest, yes. afb needs a way to bring those configs (eg mcp url addresses) down to the projects. and project afb.toml can override if neceessary. since different users on different machines collaborating on the same repom may need to add their own memory servers (so these urls should not appear in the files committed to the project). the project afb.toml does get committed to the project, so if a project uses a company wide mcp server with common address, then it can be configured in project afb.toml. hmm. in this case, this should all just be in a user-specific layer. not in afb.toml. what would go in a user level afb.toml? i guess configuration for the user-specific harness. so this begs the question - shall harnesses be user or project specific? a user may want to work with their own personal harness on personal projects, and a work harness on work projects, on the same machine. this is where the nix/devbox/ containers come in. but then afb.toml is project-specific, and team members use it to install and enter the same harness as team mates. and we're back to wondering what goes in the user level afb.toml? this feels like duplicating workflows from dev container based setups. what can we learn from that in terms of best practices?
-3. Test isolation mechanism — Devbox + HOME override vs containers? Both?
-> COMMENT: how do we handle components that dont have native nix packages? user must roll the package themself? how to maintain currency with latest versions? is a better way to do this declaratively rather via containeers?
-4. Cross-machine memory sync — dump/import vs Litestream vs cr-sqlite?
-5. Layer git strategy — clone to cache dir (proposed) vs git subtree vs git submodule?
-6. LNAI dry-run — does it exist? If not, how does `afb diff` work for runtime configs?
-> COMMENT: yes, it has dry-run
-
-> COMMENT: new requirement. afb install, sync, shall be idempotent. it will require some sort of afb lock file, or record of what was installed? a hash of the config to check if anything changed since last run? does not get committed to project dir.
-> COMMENT: new requirement for nix/ container approach: shall be able to roll back to earlier versions of the harness if an experiment/ upgrade doesnt work
+3. Per-file merge strategy overrides — needed, or per-layer sufficient?
+4. User-level afb.toml — for machine-wide tools (MCP servers). How does project inherit?
+5. Per-harness vs per-machine backups — some components are machine-wide, not project-scoped
+6. Container isolation details — Dockerfile template, which runtimes work well in containers?
+7. Statistical process control metrics — what to track, how to couple with logging?
