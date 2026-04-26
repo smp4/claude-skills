@@ -20,20 +20,20 @@ AFB does contain a thin translation layer: it maps its own manifest structure an
 
 ## Primitives
 
-| Primitive | Description | Durable? | Owned by |
-|-----------|-------------|----------|----------|
-| **Manifest** | `afb.toml` — desired state declaration | Yes (git) | User |
-| **Lock** | `afb.lock` — records installed state | Yes (git) | AFB (generated) |
-| **Component** | External tool with lifecycle hooks | Declaration in manifest; state owned by component | User + component |
-| **Layer** | Config source with priority + merge strategy | Content is external (git repos); declaration in manifest | User |
-| **Script** | User shell script in `.afb/scripts/` | Yes (git) | User |
-| **Containerfile** | Generated image definition for project harness | Generated (`.afb/generated/`) | AFB |
-| **Compose file** | Generated multi-container orchestration | Generated (`.afb/generated/`) | AFB |
+| Primitive         | Description                                    | Durable?                                                 | Owned by         |
+| ----------------- | ---------------------------------------------- | -------------------------------------------------------- | ---------------- |
+| **Manifest**      | `afb.toml` — desired state declaration         | Yes (git)                                                | User             |
+| **Lock**          | `afb.lock` — records installed state           | Yes (git)                                                | AFB (generated)  |
+| **Component**     | External tool with lifecycle hooks             | Declaration in manifest; state owned by component        | User + component |
+| **Layer**         | Config source with priority + merge strategy   | Content is external (git repos); declaration in manifest | User             |
+| **Script**        | User shell script in `.afb/scripts/`           | Yes (git)                                                | User             |
+| **Containerfile** | Generated image definition for project harness | Generated (`.afb/generated/`)                            | AFB              |
+| **Compose file**  | Generated multi-container orchestration        | Generated (`.afb/generated/`)                            | AFB              |
 
 AFB does not introduce new concepts for targets — target configuration lives in the composed `.ai/config.yaml` and is read by LNAI directly.
 
 ## Directory Layout
-
+> COMMENT: afb.local.toml, user can put their own prefernces in, that overrides afb.toml, does not get committed to project repo. 
 ```
 project-root/
 ├── afb.toml                    # manifest (committed)
@@ -122,10 +122,10 @@ project-root/
 
 MCP servers use two transport modes. Container networking handles both, but differently:
 
-| Transport | How to share | Approach |
-|-----------|-------------|----------|
-| **SSE / Streamable HTTP** | Native network access | Run in own container, expose port. Agent containers connect via `http://service-name:port` on compose network |
-| **stdio** | Requires gateway | Run behind an MCP gateway that wraps stdio in HTTP. Gateway container exposes unified endpoint. Agents connect to gateway |
+| Transport                 | How to share          | Approach                                                                                                                  |
+| ------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| **SSE / Streamable HTTP** | Native network access | Run in own container, expose port. Agent containers connect via `http://service-name:port` on compose network             |
+| **stdio**                 | Requires gateway      | Run behind an MCP gateway that wraps stdio in HTTP. Gateway container exposes unified endpoint. Agents connect to gateway |
 
 **MCP gateway**: a process that spawns stdio MCP servers as subprocesses and exposes them over HTTP/Streamable HTTP. Docker MCP Gateway and AgentGateway are existing implementations. AFB declares which MCP servers need gateway wrapping in `afb.toml`; the generated Compose file configures the gateway container accordingly.
 
@@ -223,11 +223,11 @@ volumes:
 
 ### Authentication
 
-| Method | When | How |
-|--------|------|-----|
-| **OAuth (Pro sub)** | Interactive use | `claude auth login` inside container. Token stored in named volume (`claude-auth`). Persists across container rebuilds |
-| **API key** | Headless / CI | `ANTHROPIC_API_KEY` env var in compose `.env` file (gitignored) or injected via secrets |
-| **apiKeyHelper** | Enterprise rotation | Script in container that outputs short-lived key |
+| Method              | When                | How                                                                                                                    |
+| ------------------- | ------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| **OAuth (Pro sub)** | Interactive use     | `claude auth login` inside container. Token stored in named volume (`claude-auth`). Persists across container rebuilds |
+| **API key**         | Headless / CI       | `ANTHROPIC_API_KEY` env var in compose `.env` file (gitignored) or injected via secrets                                |
+| **apiKeyHelper**    | Enterprise rotation | Script in container that outputs short-lived key                                                                       |
 
 For Pro subscription: authenticate once per container. Named volume preserves the token. Token refresh writes back to the volume. No host `~/.claude/` mount needed.
 
@@ -390,11 +390,11 @@ built_at = "2026-04-25T07:02:00Z"
 
 Variables available in all hook commands:
 
-| Variable | Source |
-|----------|--------|
-| `${backup_dir}` | `[settings].backup_dir` (tilde-expanded) |
-| `${version}` | Component's own `version` field |
-| `${scripts_dir}` | `[settings].scripts_dir` |
+| Variable          | Source                                               |
+| ----------------- | ---------------------------------------------------- |
+| `${backup_dir}`   | `[settings].backup_dir` (tilde-expanded)             |
+| `${version}`      | Component's own `version` field                      |
+| `${scripts_dir}`  | `[settings].scripts_dir`                             |
 | `${project_root}` | Absolute path to project root (where afb.toml lives) |
 
 Simple string substitution. No template language, no conditionals.
@@ -447,12 +447,12 @@ Cloning external git repos into `.afb/layers/` (which is gitignored) does not ca
 
 ### Deep Merge Semantics
 
-| Structure | Behavior |
-|-----------|----------|
-| Object/map keys | Merge recursively. Incoming wins at leaf |
-| Arrays | **Replace** — incoming array replaces existing array entirely |
-| Scalars | Incoming wins |
-| Key present in existing, absent in incoming | Preserved (no implicit deletion) |
+| Structure                                   | Behavior                                                      |
+| ------------------------------------------- | ------------------------------------------------------------- |
+| Object/map keys                             | Merge recursively. Incoming wins at leaf                      |
+| Arrays                                      | **Replace** — incoming array replaces existing array entirely |
+| Scalars                                     | Incoming wins                                                 |
+| Key present in existing, absent in incoming | Preserved (no implicit deletion)                              |
 
 Array replace is the safe default — predictable, avoids duplication. Append may be added as opt-in later.
 
@@ -485,24 +485,24 @@ Stage 2 catches changes made directly in runtime dirs by the runtimes themselves
 
 ## CLI Commands
 
-| Command | What it does |
-|---------|-------------|
-| `afb init` | Create `afb.toml` scaffold + `.afb/project/`. Add gitignore entries |
-| `afb sync` | Pull layers → compose → `.ai/` → validate → run sync command → update afb.lock |
-| `afb build` | Generate Containerfile + compose.yaml from afb.toml. Run `podman-compose build` |
-| `afb up` | `podman-compose up -d` (start project + MCP containers) |
-| `afb down` | `podman-compose down` |
-| `afb rebuild` | build + down + up |
-| `afb diff` | Compose to temp, diff against current `.ai/` + runtime configs (both stages) |
-| `afb validate` | Validate afb.toml schema + composed `.ai/` via `lnai validate` |
-| `afb install` | Run install hook for each enabled component. Update afb.lock. (Runs inside container or on host for host-side components) |
-| `afb uninstall <name>` | Run uninstall hook. User sets enabled=false in afb.toml |
-| `afb backup` | Run backup hook for each component that defines one |
-| `afb status` | Run health hook for enabled components. Compare afb.lock vs afb.toml |
-| `afb push [layer]` | Push changes in layer dir(s) to upstream |
-| `afb run <script>` | Execute `${scripts_dir}/<script>` |
-| `afb layer pull [name]` | Git pull in specified (or all) layer dirs. Respects `ref` pin |
-| `afb shell [service]` | Open interactive shell in running container (default: project container) |
+| Command                 | What it does                                                                                                              |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `afb init`              | Create `afb.toml` scaffold + `.afb/project/`. Add gitignore entries                                                       |
+| `afb sync`              | Pull layers → compose → `.ai/` → validate → run sync command → update afb.lock                                            |
+| `afb build`             | Generate Containerfile + compose.yaml from afb.toml. Run `podman-compose build`                                           |
+| `afb up`                | `podman-compose up -d` (start project + MCP containers)                                                                   |
+| `afb down`              | `podman-compose down`                                                                                                     |
+| `afb rebuild`           | build + down + up                                                                                                         |
+| `afb diff`              | Compose to temp, diff against current `.ai/` + runtime configs (both stages)                                              |
+| `afb validate`          | Validate afb.toml schema + composed `.ai/` via `lnai validate`                                                            |
+| `afb install`           | Run install hook for each enabled component. Update afb.lock. (Runs inside container or on host for host-side components) |
+| `afb uninstall <name>`  | Run uninstall hook. User sets enabled=false in afb.toml                                                                   |
+| `afb backup`            | Run backup hook for each component that defines one                                                                       |
+| `afb status`            | Run health hook for enabled components. Compare afb.lock vs afb.toml                                                      |
+| `afb push [layer]`      | Push changes in layer dir(s) to upstream                                                                                  |
+| `afb run <script>`      | Execute `${scripts_dir}/<script>`                                                                                         |
+| `afb layer pull [name]` | Git pull in specified (or all) layer dirs. Respects `ref` pin                                                             |
+| `afb shell [service]`   | Open interactive shell in running container (default: project container)                                                  |
 
 ### Command: `afb sync` (detailed)
 
@@ -581,18 +581,18 @@ Each package has one job. No shared utility packages. If two packages need the s
 
 ## Technology Choices
 
-| Choice | Rationale |
-|--------|-----------|
-| **Go** | Single binary, no runtime deps, fast startup, strong test stdlib. Aligns with Gas City |
-| **cobra** | Standard Go CLI framework for subcommands |
-| **BurntSushi/toml** | Mature, well-tested TOML parser |
-| **dario.cat/mergo** | Proven deep merge library (9k+ stars). Handles recursive map merge with override |
-| **zerolog** | Structured JSON logging, zero-allocation, 12-factor compatible |
-| **gopkg.in/yaml.v3** | YAML parsing (mergo handles the merge logic) |
-| **encoding/json** | stdlib JSON parsing |
-| **git CLI** | Shell out for clone/pull/push. Respects user's git config, SSH keys |
-| **podman / docker** | Container runtime. Shell out for build/up/down. Podman preferred (rootless, daemonless) |
-| **podman-compose / docker-compose** | Multi-container orchestration. AFB generates compose.yaml, delegates lifecycle |
+| Choice                              | Rationale                                                                               |
+| ----------------------------------- | --------------------------------------------------------------------------------------- |
+| **Go**                              | Single binary, no runtime deps, fast startup, strong test stdlib. Aligns with Gas City  |
+| **cobra**                           | Standard Go CLI framework for subcommands                                               |
+| **BurntSushi/toml**                 | Mature, well-tested TOML parser                                                         |
+| **dario.cat/mergo**                 | Proven deep merge library (9k+ stars). Handles recursive map merge with override        |
+| **zerolog**                         | Structured JSON logging, zero-allocation, 12-factor compatible                          |
+| **gopkg.in/yaml.v3**                | YAML parsing (mergo handles the merge logic)                                            |
+| **encoding/json**                   | stdlib JSON parsing                                                                     |
+| **git CLI**                         | Shell out for clone/pull/push. Respects user's git config, SSH keys                     |
+| **podman / docker**                 | Container runtime. Shell out for build/up/down. Podman preferred (rootless, daemonless) |
+| **podman-compose / docker-compose** | Multi-container orchestration. AFB generates compose.yaml, delegates lifecycle          |
 
 External runtime dependencies: `git`, `podman` or `docker`, `podman-compose` or `docker-compose`, configured sync command (default: `lnai` — installed inside container).
 
@@ -786,35 +786,35 @@ Container logs are accessible via `podman-compose logs` as usual. AFB doesn't ca
 
 ## Risks & Mitigations
 
-| Risk | Impact | Likelihood | Mitigation |
-|------|--------|-----------|------------|
-| LNAI breaking changes or abandonment (239 stars) | `afb sync` breaks | Medium | Pin version. Sync command is configurable — can swap |
-| Deep merge produces invalid config | Runtime reads bad config | Medium | `afb validate` after compose, before sync. `afb diff` for inspection |
-| Component install hook fails in container | Component unavailable | High | Log error + continue. Record failure in lock. User rebuilds after fixing |
-| Stdio MCP server sharing complexity | MCP gateway adds moving parts | Medium | Start with in-container stdio for single-agent MCP. Graduate to gateway when sharing needed |
-| Container runtime not installed | `afb build` fails | Low | Clear error message. Document podman install. Fallback: `afb sync` still works on host for local-only use |
-| macOS container performance | Slow file operations | Low | Acceptable at single-dev scale. Heavy workloads on Linux box |
-| Podman-compose compatibility gaps | Generated compose.yaml may need tweaks | Low-Medium | Test with both podman-compose and docker-compose. Stick to v3 compose spec subset |
-| Image build time | Slow iteration | Medium | Layer caching. Base image with common tools. Only changed layers rebuild |
-| OAuth token refresh in container | Auth breaks mid-session | Low | Named volume for `~/.claude/`. Token refresh writes to volume. Monitor for issues |
-| Abstraction fatigue (afb wraps compose wraps containers wraps runtimes) | Debugging depth | Medium | Keep AFB scope to generation. Each layer independently inspectable. Structured logging |
-| Gas City pack system overlaps with afb layers | Both try to configure agents | Unknown | Defer until Gas City evaluation. Different scopes: afb = harness config, Gas City = agent orchestration |
+| Risk                                                                    | Impact                                 | Likelihood | Mitigation                                                                                                |
+| ----------------------------------------------------------------------- | -------------------------------------- | ---------- | --------------------------------------------------------------------------------------------------------- |
+| LNAI breaking changes or abandonment (239 stars)                        | `afb sync` breaks                      | Medium     | Pin version. Sync command is configurable — can swap                                                      |
+| Deep merge produces invalid config                                      | Runtime reads bad config               | Medium     | `afb validate` after compose, before sync. `afb diff` for inspection                                      |
+| Component install hook fails in container                               | Component unavailable                  | High       | Log error + continue. Record failure in lock. User rebuilds after fixing                                  |
+| Stdio MCP server sharing complexity                                     | MCP gateway adds moving parts          | Medium     | Start with in-container stdio for single-agent MCP. Graduate to gateway when sharing needed               |
+| Container runtime not installed                                         | `afb build` fails                      | Low        | Clear error message. Document podman install. Fallback: `afb sync` still works on host for local-only use |
+| macOS container performance                                             | Slow file operations                   | Low        | Acceptable at single-dev scale. Heavy workloads on Linux box                                              |
+| Podman-compose compatibility gaps                                       | Generated compose.yaml may need tweaks | Low-Medium | Test with both podman-compose and docker-compose. Stick to v3 compose spec subset                         |
+| Image build time                                                        | Slow iteration                         | Medium     | Layer caching. Base image with common tools. Only changed layers rebuild                                  |
+| OAuth token refresh in container                                        | Auth breaks mid-session                | Low        | Named volume for `~/.claude/`. Token refresh writes to volume. Monitor for issues                         |
+| Abstraction fatigue (afb wraps compose wraps containers wraps runtimes) | Debugging depth                        | Medium     | Keep AFB scope to generation. Each layer independently inspectable. Structured logging                    |
+| Gas City pack system overlaps with afb layers                           | Both try to configure agents           | Unknown    | Defer until Gas City evaluation. Different scopes: afb = harness config, Gas City = agent orchestration   |
 
 ## Future Work
 
-| Item | Phase | Notes |
-|------|-------|-------|
-| Gas City integration | 3 | Install as component inside container. Evaluate pack overlap |
-| MCP gateway configuration | 2 | Declare shared MCP servers in afb.toml, generate gateway config in compose |
-| Container registry | 2 | Push images for cross-machine sharing without rebuild |
-| Multi-project compose | 2 | Single compose file managing multiple project containers + shared MCP |
-| Handoff system | After memory | claude-handoff or similar, as component inside container |
-| Skillshare integration | After LNAI validated | Complementary skill distribution |
-| `afb adopt <file> <layer>` | If drift cherry-picking proves painful | Copy runtime config change back to a layer |
-| User-level afb.toml | If machine-wide tool management needed | For MCP servers and tools shared across projects |
-| Firewall rules in Containerfile | 2 | Claude Code's devcontainer firewall pattern — whitelist API domains only |
-| Continuous improvement metrics | 4+ | Track build times, drift frequency. Couple with afb logging |
-| HUD integration | 3 | Evaluate if Gas City subsumes workflow state machine |
+| Item                            | Phase                                  | Notes                                                                      |
+| ------------------------------- | -------------------------------------- | -------------------------------------------------------------------------- |
+| Gas City integration            | 3                                      | Install as component inside container. Evaluate pack overlap               |
+| MCP gateway configuration       | 2                                      | Declare shared MCP servers in afb.toml, generate gateway config in compose |
+| Container registry              | 2                                      | Push images for cross-machine sharing without rebuild                      |
+| Multi-project compose           | 2                                      | Single compose file managing multiple project containers + shared MCP      |
+| Handoff system                  | After memory                           | claude-handoff or similar, as component inside container                   |
+| Skillshare integration          | After LNAI validated                   | Complementary skill distribution                                           |
+| `afb adopt <file> <layer>`      | If drift cherry-picking proves painful | Copy runtime config change back to a layer                                 |
+| User-level afb.toml             | If machine-wide tool management needed | For MCP servers and tools shared across projects                           |
+| Firewall rules in Containerfile | 2                                      | Claude Code's devcontainer firewall pattern — whitelist API domains only   |
+| Continuous improvement metrics  | 4+                                     | Track build times, drift frequency. Couple with afb logging                |
+| HUD integration                 | 3                                      | Evaluate if Gas City subsumes workflow state machine                       |
 
 ## Architecture Decision Records
 
