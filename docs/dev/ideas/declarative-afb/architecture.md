@@ -1,6 +1,6 @@
 # AFB Architecture
 
-> Status: Draft (rev 4)
+> Status: Draft (rev 5)
 > Date: 2026-04-26
 > Companion: spec.md, domain.md
 
@@ -72,9 +72,27 @@ project-root/
 **What's external**: layer git repos, component state (SQLite DBs, etc.), backups
 **What's inside the container**: project code (cloned), `.ai/`, `.claude/`, `.opencode/`, `.mcp.json`, all component binaries
 
-**afb.local.toml**: user-specific overrides that deep-merge over `afb.toml` using the same merge rules as layers. Gitignored. Use case: personal tool preferences, local paths, dev-mode overrides (e.g., `mount_workspace = true` for bind-mount debugging). Processed after `afb.toml`, before layer composition.
+**afb.local.toml**: user-specific overrides that shallow-merge over `afb.toml` — top-level keys in local override the same top-level keys in the manifest. Gitignored. Use case: personal tool preferences, local paths, dev-mode overrides (e.g., `mount_workspace = true` for bind-mount debugging). Processed after `afb.toml`, before layer composition. Deep merge deferred until real use cases demand it.
 
 `.afb/project/` is functionally a layer — the highest-priority one. Named "project" because it contains the same type of content as `.afb/layers/*` dirs (rules, skills, settings), just committed to the project repo instead of pulled from an external source.
+
+### `.ai/` Directory Contract
+
+The `.ai/` directory is the primary integration surface between AFB (producer) and LNAI (consumer). This is an explicit, versioned contract:
+
+```
+.ai/
+├── .ai-format-version          # contains "1" — format version marker
+├── AGENTS.md
+├── rules/
+├── skills/
+├── settings.yaml
+└── config.yaml
+```
+
+AFB writes `.ai-format-version` during composition. LNAI's expected format is characterized by tests (see Test Strategy). If LNAI changes its expectations, the characterization tests break before users hit mysterious sync failures.
+
+**Format version semantics**: the version tracks the directory structure and file semantics, not content. Version bump = structural change to what files exist or what they mean. Content within files is layer-driven and versioned by the layers themselves.
 
 ## Application Architecture
 
@@ -92,18 +110,19 @@ Three candidates evaluated for a Go CLI of this scope:
 
 ### Why Ports & Adapters
 
-AFB has 4-5 external tools that are explicitly designed to be swappable:
-- **Sync command**: LNAI today, something else tomorrow (`[sync].command`)
-- **Container runtime**: podman or docker (`[container].runtime`)
-- **Compose tool**: podman-compose or docker-compose
+AFB has 2 external tools that justify Go-level port interfaces:
+- **Container runtime**: podman today, docker later (`[container].runtime`)
 - **Git**: shell out to `git` CLI (could become go-git later)
-- **Filesystem**: OS filesystem (test with in-memory FS)
 
-The architecture should make swappability structural, not accidental. Go's implicit interfaces keep this lightweight — define the interface where it's consumed, not in a separate package.
+Other external tools use simpler mechanisms:
+- **Sync command**: swappable via `[sync].command` config field — config-level abstraction suffices, no Go interface needed
+- **Filesystem**: use `os` directly, test with `os.MkdirTemp`
 
-**Weakness**: interface proliferation risk. Mitigation: only define ports for genuinely external/swappable dependencies. Internal packages call each other directly. No port for "manifest parsing" — that's core domain.
+The architecture makes swappability structural where it matters and avoids ports that mirror stdlib 1:1. Go's implicit interfaces keep this lightweight — define the interface where it's consumed, not in a separate package.
 
 ### Port Definitions
+
+Only genuinely external/swappable dependencies get ports. Internal operations (filesystem, sync command shelling) use stdlib directly.
 
 ```go
 // Git operations — consumed by layer package
@@ -121,34 +140,19 @@ type ContainerRuntime interface {
     ComposeDown(composeFile string, project string) error
     ImageID(tag string) (string, error)
 }
-
-// Sync command — consumed by sync package
-type SyncCommand interface {
-    Run(projectDir string) error
-    Validate(projectDir string) error
-}
-
-// Filesystem — consumed by layer, diff packages
-type FS interface {
-    ReadFile(path string) ([]byte, error)
-    WriteFile(path string, data []byte, perm os.FileMode) error
-    Walk(root string, fn filepath.WalkFunc) error
-    MkdirAll(path string, perm os.FileMode) error
-    RemoveAll(path string) error
-    // ... standard fs operations
-}
 ```
+
+**Sync command**: no port. The `[sync].command` config field already provides swappability — shelling out to a configurable string doesn't need a Go interface on top. Call `os/exec` directly.
+
+**Filesystem**: no port. Use `os` directly. Unit-test composition with `os.MkdirTemp`. An FS abstraction that mirrors stdlib 1:1 is indirection without abstraction. Add a port if a genuine need emerges (e.g., remote storage).
 
 ### Adapter Implementations
 
-| Port | Adapter | Implementation |
-|------|---------|---------------|
-| `Git` | `GitCLI` | Shells out to `git` binary |
-| `ContainerRuntime` | `PodmanRuntime` | Shells out to `podman` + `podman-compose` |
-| `ContainerRuntime` | `DockerRuntime` | Shells out to `docker` + `docker-compose` |
-| `SyncCommand` | `LNAISync` | Shells out to `lnai sync` / `lnai validate` |
-| `FS` | `OSFS` | Standard `os` package |
-| `FS` | `MemFS` | In-memory filesystem for unit tests |
+| Port | Adapter | Implementation | Phase |
+|------|---------|---------------|-------|
+| `Git` | `GitCLI` | Shells out to `git` binary | v1 |
+| `ContainerRuntime` | `PodmanRuntime` | Shells out to `podman` + `podman-compose` | v1 |
+| `ContainerRuntime` | `DockerRuntime` | Shells out to `docker` + `docker-compose` | v2 (port interface exists, adapter deferred) |
 
 ### Dependency Wiring
 
@@ -161,9 +165,7 @@ func newSyncCmd() *cobra.Command {
         RunE: func(cmd *cobra.Command, args []string) error {
             manifest := manifest.MustLoad("afb.toml")
             git := gitcli.New()
-            fs := osfs.New()
-            syncCmd := lnaisync.New(manifest.Sync.Command)
-            return sync.Run(manifest, git, fs, syncCmd)
+            return sync.Run(manifest, git)
         },
     }
 }
@@ -179,7 +181,7 @@ afb/
 │   ├── domain/                 # core domain — pure logic, no external deps
 │   │   ├── manifest/           # afb.toml parsing, validation, variable expansion
 │   │   │   ├── manifest.go
-│   │   │   ├── local.go        # afb.local.toml merge
+│   │   │   ├── local.go        # afb.local.toml shallow merge
 │   │   │   └── manifest_test.go
 │   │   ├── lock/               # afb.lock read/write/check
 │   │   │   ├── lock.go
@@ -189,25 +191,19 @@ afb/
 │   │   │   ├── merge.go        # deep merge orchestration (delegates to mergo)
 │   │   │   └── *_test.go
 │   │   └── generate/           # Containerfile + compose.yaml generation
-│   │       ├── containerfile.go
-│   │       ├── composefile.go
+│   │       ├── containerfile.go      # text/template-based
+│   │       ├── containerfile.tmpl    # Containerfile template
+│   │       ├── composefile.go        # text/template-based
+│   │       ├── composefile.tmpl      # compose.yaml template
 │   │       └── *_test.go
 │   ├── ports/                  # interface definitions (small file per port)
 │   │   ├── git.go
-│   │   ├── runtime.go
-│   │   ├── sync.go
-│   │   └── fs.go
+│   │   └── runtime.go
 │   ├── adapters/               # external tool implementations
 │   │   ├── gitcli/
 │   │   │   └── git.go          # Git port via git CLI
-│   │   ├── podman/
-│   │   │   └── runtime.go      # ContainerRuntime port via podman
-│   │   ├── docker/
-│   │   │   └── runtime.go      # ContainerRuntime port via docker
-│   │   ├── lnaisync/
-│   │   │   └── sync.go         # SyncCommand port via lnai
-│   │   └── osfs/
-│   │       └── fs.go           # FS port via os package
+│   │   └── podman/
+│   │       └── runtime.go      # ContainerRuntime port via podman (v1)
 │   ├── doctor/                 # afb doctor logic (traversal, checks)
 │   │   └── doctor.go
 │   ├── diff/                   # drift detection (both stages)
@@ -219,9 +215,9 @@ afb/
 └── go.sum
 ```
 
-Core domain packages (`internal/domain/*`) have zero external tool dependencies — they depend only on port interfaces and stdlib. This makes them unit-testable without git, containers, or filesystem.
+Core domain packages (`internal/domain/*`) have zero external tool dependencies — they depend only on port interfaces and stdlib. Unit-testable with `os.MkdirTemp` for filesystem operations.
 
-Adapter packages (`internal/adapters/*`) implement ports by shelling out to external tools. Integration-tested.
+Adapter packages (`internal/adapters/*`) implement ports by shelling out to external tools. Integration-tested. Docker adapter deferred to v2 — the `ContainerRuntime` port exists so it slots in without changing core logic.
 
 ## Container Architecture
 
@@ -229,7 +225,7 @@ Adapter packages (`internal/adapters/*`) implement ports by shelling out to exte
 
 1. **Self-contained**: each project container includes the harness (AFB, LNAI, runtimes), project code (cloned from git), and composed config. No host mounts for project files.
 2. **Shared services via network**: MCP servers and databases run in their own containers (or on host), accessed over the network. Agent containers connect to them via Compose networking.
-3. **Podman preferred**: rootless, daemonless, no sudo. Docker compatible — Compose files work with both `podman-compose` and `docker-compose`.
+3. **Podman only (v1)**: rootless, daemonless, no sudo. Docker adapter deferred to v2 — the `ContainerRuntime` port interface exists so it slots in later. Compose files use the subset of Compose Specification features with known podman-compose support (see Compose Spec Compliance below).
 4. **Declarative**: AFB generates Containerfiles and Compose files from `afb.toml`. User runs `podman-compose up` (or AFB wraps this).
 5. **Disposable**: containers are ephemeral. State lives in named volumes or external services. Rebuild image = fresh harness.
 
@@ -353,7 +349,7 @@ ENV AFB_LOG_LEVEL=info
 ENTRYPOINT ["claude"]
 ```
 
-The Containerfile is generated line by line from parsed manifest data, not templated. This avoids template-language complexity and makes the output inspectable.
+The Containerfile is generated via Go's `text/template` (stdlib). The template file (`containerfile.tmpl`) looks like the output with `{{.Field}}` placeholders — readable, diffable, inspectable. Same approach for `compose.yaml`.
 
 **ENTRYPOINT** configurable via `[container].entrypoint` in afb.toml. Defaults to the first enabled runtime. Eventually the workflow orchestrator (Gas City) when integrated.
 
@@ -435,6 +431,31 @@ Default: `afb-{dirname}` where dirname is the project directory name. Predictabl
 | Shared services | `afb-shared` (convention) |
 | Custom | `[container].project_name` overrides in afb.toml |
 
+### Compose Spec Compliance
+
+Generated compose.yaml uses only features with known podman-compose support:
+
+| Feature | Used for | podman-compose support |
+|---------|----------|----------------------|
+| `services` | Container definitions | Yes |
+| `build` (context, dockerfile, args) | Image builds | Yes |
+| `networks` (bridge driver) | Internal networking | Yes |
+| `networks` (external: true) | Join shared services network | Yes |
+| `volumes` (named) | Persistent data (auth, DBs) | Yes |
+| `environment` | Runtime env vars | Yes |
+| `stdin_open`, `tty` | Interactive shells | Yes |
+| `ports` | Host port mapping | Yes |
+| `image` | Pre-built images | Yes |
+
+**Explicitly avoided** (incomplete or absent podman-compose support):
+- `depends_on` with conditions — use startup scripts instead
+- `healthcheck` — use component doctor commands
+- `deploy` — Swarm/k8s only
+- `configs`, `secrets` — use environment variables or volumes
+- `profiles` — use separate compose files instead
+
+Validated in CI by `podman-compose config --quiet` as a fitness function.
+
 ### Authentication
 
 | Method              | When                | How                                                                                                                    |
@@ -485,6 +506,8 @@ This generates a volume mount in compose.yaml instead of the `git clone` step in
 ## Data Model: afb.toml
 
 ```toml
+schema_version = 1              # manifest schema version — enables future migration
+
 [settings]
 scripts_dir = ".afb/scripts"
 
@@ -613,13 +636,27 @@ Components are opaque — AFB runs hook commands without understanding what the 
 
 ### afb.local.toml
 
-User-specific overrides. Deep-merged over `afb.toml` using the same merge rules as layers. Gitignored.
+User-specific overrides. Shallow-merged over `afb.toml` — top-level TOML table keys in local replace the corresponding table in the manifest. Gitignored.
 
 Common uses:
 - `mount_workspace = true` for local bind-mount development
 - Local tool paths
 - Dev-mode settings
 - Override `strict = true` for local builds
+
+Deep merge for local overrides deferred to v2. Stated use cases are all flat scalar overrides — shallow merge covers them without the complexity and edge cases of full deep merge.
+
+### Manifest Validation
+
+Validation runs at parse time, before any operation proceeds:
+
+| Check | Error |
+|-------|-------|
+| `schema_version` missing or unsupported | "unsupported schema version N — this afb requires schema_version 1" |
+| Two layers with same `priority` integer | "layers 'base' and 'team' have duplicate priority 10" |
+| Component missing `install` field | "component 'foo' missing required field: install" |
+| Layer missing `source` field | "layer 'bar' missing required field: source" |
+| `[container].runtime` not "podman" | "unsupported runtime — v1 supports podman only" |
 
 ### Variable Expansion
 
@@ -753,7 +790,9 @@ Cloning external git repos into `.afb/layers/` (which is gitignored) does not ca
 | Scalars                                     | Incoming wins                                                 |
 | Key present in existing, absent in incoming | Preserved (no implicit deletion)                              |
 
-Array replace is the safe default — predictable, avoids duplication. Uses `mergo.WithOverride` and `mergo.WithOverwriteWithEmptyValue` flags. Edge cases to test: nil vs empty maps, typed vs untyped interfaces, TOML's array/table-array types.
+Array replace is the safe default — predictable, avoids duplication. Uses `mergo.WithOverride` and `mergo.WithOverwriteWithEmptyValue` flags.
+
+**Known risk — mergo zero-value behavior**: mergo may treat empty/zero values (empty string, 0, false) as "unset" and skip override even with `WithOverride`. This contradicts the "incoming wins at leaf" rule. `WithOverwriteWithEmptyValue` is documented to handle this but has reported inconsistencies (mergo issues #54, #190). Characterization tests for all zero-value combinations are required before trusting merge semantics. If unreliable, implement a custom `mergo.WithTransformers` for leaf override. See `mergo-toml-research.md`.
 
 ## Drift Detection
 
@@ -801,7 +840,11 @@ Stage 2 catches changes made directly by runtimes — e.g., Claude Code adding a
 | `afb push [layer]`      | Push changes in layer dir(s) to upstream                                                                       |
 | `afb run <target>`      | Execute `<target>`: either a script from scripts_dir, or `<component>.<command>` for component commands        |
 | `afb layer pull [name]` | Git pull in specified (or all) layer dirs. Respects `ref` pin                                                  |
-| `afb shell [service]`   | Open interactive shell in running container (default: project container)                                       |
+
+**Deferred to v2**:
+| Command | Trigger to reconsider |
+|---------|----------------------|
+| `afb shell [service]` | When AFB needs to discover and manage running harness containers from the host |
 
 ### Command: `afb doctor`
 
@@ -894,52 +937,96 @@ In `--strict` mode: first install failure causes the entire build to fail.
 | **gopkg.in/yaml.v3**               | YAML parsing (mergo handles the merge logic)                                            |
 | **encoding/json**                   | stdlib JSON parsing                                                                     |
 | **git CLI**                         | Shell out for clone/pull/push. Respects user's git config, SSH keys                     |
-| **podman / docker**                 | Container runtime. Shell out for build/up/down. Podman preferred (rootless, daemonless) |
-| **podman-compose / docker-compose** | Multi-container orchestration. AFB generates compose.yaml, delegates lifecycle          |
+| **podman**                          | Container runtime (v1). Shell out for build/up/down. Rootless, daemonless. Docker adapter deferred to v2 |
+| **podman-compose**                  | Multi-container orchestration (v1). AFB generates compose.yaml, delegates lifecycle. docker-compose deferred to v2 |
 | **AgentGateway**                    | MCP gateway for shared stdio servers. Linux Foundation, Rust, v1.0, runtime-agnostic   |
 
-External runtime dependencies: `git`, `podman` or `docker`, `podman-compose` or `docker-compose`, configured sync command (default: `lnai` — installed inside container).
+External runtime dependencies (v1): `git`, `podman`, `podman-compose`, configured sync command (default: `lnai` — installed inside container).
 
-**Not using**: k3s/minikube/kind (overkill for 2-10 containers on 1-2 machines), Docker MCP Gateway (requires Docker Desktop — incompatible with Podman), yq/jq (mergo handles merge in-process), go-git (shell git is simpler), template engines (line-by-line generation suffices for Containerfiles).
+**Not using**: k3s/minikube/kind (overkill for 2-10 containers on 1-2 machines), Docker MCP Gateway (requires Docker Desktop — incompatible with Podman), yq/jq (mergo handles merge in-process), go-git (shell git is simpler).
 
 ## Test Strategy
+
+### Acceptance Criteria
+
+Core operations must satisfy these measurable criteria before v1:
+
+| Criterion | Measurement | Threshold |
+|-----------|------------|-----------|
+| Composition correctness | Composition with N layers produces expected file tree (golden-file tests) | 100% match |
+| Containerfile validity | Generated Containerfile passes hadolint | Zero errors (warnings allowed) |
+| Compose spec validity | Generated compose.yaml passes `podman-compose config` | Exit 0 |
+| Sync idempotency | `afb sync` run twice produces identical `.ai/` output | Byte-identical |
+| Build reproducibility | Same lockfile + same manifest = same image digest | Digest match |
+| Unit test speed | `go test ./internal/domain/...` | < 5s |
+| Tier isolation | No unit test requires git, container runtime, or network | Zero external deps |
+
+### Fitness Functions
+
+Automated checks that run in CI to prevent architectural drift:
+
+- **Composition idempotency**: CI job runs `afb sync` twice, diffs output — non-zero diff = failure
+- **Containerfile lint**: hadolint on generated Containerfile — catches structural errors without building
+- **Compose validation**: `podman-compose config --quiet` on generated compose.yaml — catches spec violations
+- **Test tier isolation**: `go test ./internal/domain/...` runs with no git/podman/network — if it hangs or fails on missing tool, tier boundary is broken
 
 ### Three Tiers
 
 | Tier | Tag | Dependencies | What's tested | Speed |
 |------|-----|-------------|---------------|-------|
-| **Unit** | (none) | None | Manifest parsing, composition algorithm, merge logic, Containerfile generation, lockfile read/write | Fast |
-| **Integration** | `//go:build integration` | git | Real layer cloning, composition with real git repos, merge with real files | Medium |
-| **E2E** | `//go:build e2e` | podman or docker | Build real images, start containers, verify harness inside, check logs, tear down | Slow |
+| **Unit** | (none) | None | Manifest parsing, composition algorithm, merge logic, Containerfile generation, lockfile read/write | Fast (< 5s) |
+| **Validation** | (none) | hadolint | Generated Containerfile lint, generated compose.yaml validation via `podman-compose config` | Fast |
+| **Integration** | `//go:build integration` | git, lnai | Real layer cloning, composition with real git repos, real sync command | Medium |
+| **E2E** | `//go:build e2e` | podman | Build real images, start containers, verify harness inside, check logs, tear down | Slow |
 
 ### Unit Tests
 
-Core domain packages (`internal/domain/*`) are pure logic. Test with in-memory FS adapter. No git, no containers, no filesystem.
+Core domain packages (`internal/domain/*`) are pure logic. Test with `os.MkdirTemp`. No git, no containers.
 
 - Parse sample manifests from `testdata/`
-- Compose layers from in-memory file trees
-- Assert merge results (especially edge cases: nil vs empty, array replace, typed interfaces)
-- Generate Containerfile strings, assert content
-- Generate compose.yaml strings, assert content
+- Compose layers from temp dir file trees
+- Assert merge results via golden files
+- Generate Containerfile from template, assert content
+- Generate compose.yaml from template, assert content
 - Lockfile round-trip: write → read → compare
+- **Manifest validation**: priority collision → error, missing required fields → error, schema_version mismatch → error
+
+**mergo characterization tests** (must exist before writing composition logic):
+
+| Case | Expected behavior |
+|------|------------------|
+| nil src + populated dst | dst preserved |
+| empty map src + populated dst | dst preserved |
+| populated src + nil dst | src wins |
+| TOML table-array merged | incoming replaces (array replace rule) |
+| mixed-type leaf conflict | incoming wins |
+| **empty string src + non-empty dst** | **incoming wins (verify — mergo zero-value bug risk)** |
+| **zero integer src + non-zero dst** | **incoming wins (verify)** |
+| **false bool src + true dst** | **incoming wins (verify)** |
+| empty slice src + populated dst | incoming wins (array replace) |
+
+The zero-value cases are critical. mergo may treat empty/zero as "unset" and skip them even with `WithOverride`. If `WithOverwriteWithEmptyValue` is unreliable, implement a custom `mergo.WithTransformers` for leaf override. See `mergo-toml-research.md`.
 
 ### Integration Tests
 
-Adapter packages + cross-package workflows. Require git installed.
+Adapter packages + cross-package workflows. Require git and lnai installed.
 
 - Clone a test layer repo to temp dir, checkout ref, verify files
 - Compose real layers from temp dirs, compare output
-- Full sync workflow: parse → clone → compose → validate (mock sync command)
+- Full sync workflow: parse → clone → compose → validate → **run real `lnai sync`** (not mock)
+- If lnai unavailable in CI environment, tag as `//go:build integration_lnai` and run in dedicated environment
+
+Mock sync command is acceptable for unit tests of AFB's orchestration logic. Integration tests that mock the integration point are not integration tests.
 
 ### E2E Tests
 
-Full harness lifecycle. Require container runtime.
+Full harness lifecycle. Require podman.
 
 ```
 1. Parse test manifest from testdata/
 2. afb build → generates Containerfile + compose.yaml, builds image
 3. afb up → starts container
-4. Exec inside container: verify .ai/ exists, runtime configs exist, components installed
+4. Exec inside container: verify .ai/ exists, .ai-format-version = "1", runtime configs exist, components installed
 5. Exec inside container: afb doctor → verify clean report
 6. Exec inside container: afb diff → verify no drift
 7. afb down → tear down
@@ -958,25 +1045,23 @@ jobs:
   integration:
     runs-on: ubuntu-latest
     steps:
+      # podman is pre-installed on ubuntu runners
       - run: go test -tags integration ./...
 
   e2e:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        runtime: [podman, docker]
     steps:
       # podman is pre-installed on ubuntu runners
-      - run: go test -tags e2e -runtime ${{ matrix.runtime }} ./...
+      - run: go test -tags e2e ./...
 ```
 
-Matrix tests both runtimes. E2e tests are tagged and slow — run on merge to main, not on every push.
+Podman-only for v1. Docker adapter and CI matrix deferred to v2. E2E tests tagged and slow — run on merge to main, not on every push.
 
 ### Limitations
 
-- OAuth tokens in named volumes are per-container-runtime, not shared across podman/docker
-- Full e2e tests require container runtime installed
+- Full e2e tests require podman installed
 - E2e test duration scales with number of components installed in test image
+- mergo zero-value behavior requires characterization tests before trusting override semantics
 
 ## Data Lifecycle
 
@@ -985,7 +1070,7 @@ afb.toml (authored, committed)
     │
     ├─── afb.local.toml (user overrides, gitignored)
     │         │
-    │         ▼ deep merge
+    │         ▼ shallow merge
     │    effective manifest
     │         │
     ├─── [layers] → git clone/pull → .afb/layers/*/
@@ -1056,12 +1141,12 @@ afb init                    # scaffold afb.toml + .afb/project/
 edit afb.toml               # declare components, layers, container config
 afb build                   # generate Containerfile + compose.yaml, build image
 afb up                      # start project container (joins shared network)
-afb shell                   # enter container, authenticate runtimes
+podman exec -it <container> bash   # enter container, authenticate runtimes
 ```
 
 ### Daily Work
 ```
-# develop inside container via Dev Containers or afb shell...
+# develop inside container via Dev Containers or podman exec...
 # runtime modifies its own config (e.g., adds MCP server via Claude Code)
 afb diff                    # what changed? (covers .ai/ AND runtime dirs)
 # user cherry-picks desired changes into .afb/project/ or a layer dir
@@ -1146,13 +1231,14 @@ Container logs are accessible via `podman-compose logs`. AFB doesn't capture or 
 | Stdio MCP server sharing complexity                                     | MCP gateway adds moving parts          | Medium     | Start with in-container stdio for single-agent MCP. Graduate to AgentGateway when sharing needed          |
 | Container runtime not installed                                         | `afb build` fails                      | Low        | `afb doctor` on host checks prerequisites. Clear error messages                                           |
 | macOS container performance                                             | Slow file operations                   | Low        | Acceptable at single-dev scale. Heavy workloads on Linux box                                              |
-| Podman-compose compatibility gaps                                       | Generated compose.yaml may need tweaks | Low-Medium | Test with both podman-compose and docker-compose. Stick to v3 compose spec subset. CI matrix              |
+| Podman-compose compatibility gaps                                       | Generated compose.yaml may need tweaks | Low-Medium | Stick to documented safe feature subset (see Compose Spec Compliance). Validate with `podman-compose config` in CI |
 | Image build time                                                        | Slow iteration                         | Medium     | Layer caching. Base image with common tools. Only changed layers rebuild                                  |
 | OAuth token refresh in container                                        | Auth breaks mid-session                | Low        | Named volume for `~/.claude/`. Token refresh writes to volume                                             |
 | Abstraction fatigue (afb wraps compose wraps containers wraps runtimes) | Debugging depth                        | Medium     | Keep AFB scope to generation. Each layer independently inspectable. Structured logging                    |
 | Gas City pack system overlaps with afb layers                           | Both try to configure agents           | Unknown    | Defer until Gas City evaluation. Different scopes: afb = harness config, Gas City = agent orchestration   |
 | AgentGateway breaking changes                                           | Shared MCP access breaks               | Low        | Pin version. Gateway is optional — fallback to in-container stdio                                         |
 | Lockfile can't track all component versions                             | Imperfect reproducibility              | Medium     | Best-effort: track what's trackable. Layers always get commit hashes. Document limitations                |
+| mergo zero-value override bug                                           | Empty/zero values silently not merged  | Medium     | Characterization tests before writing composition logic. Custom transformer if `WithOverwriteWithEmptyValue` unreliable |
 
 ## Future Work
 
@@ -1212,8 +1298,10 @@ Container logs are accessible via `podman-compose logs`. AFB doesn't capture or 
 ### ADR-006: Array replace as default merge strategy
 
 **Status**: Accepted
+**Reversibility**: **Expensive** — every layer configuration depends on this semantic. Changing after real users have layers = breaking change to all existing layer content.
 **Decision**: Incoming array replaces existing array entirely.
 **Rationale**: Predictable, avoids duplication bugs. Layers that want to extend must include the full list.
+**Reconsider when**: users consistently need array-append semantics and the workaround (include full list) is too painful.
 
 ### ADR-007: Container-first isolation
 
@@ -1233,8 +1321,11 @@ Container logs are accessible via `podman-compose logs`. AFB doesn't capture or 
 ### ADR-009: Integer priority, not directory-name ordering
 
 **Status**: Accepted
-**Decision**: Mandatory `priority` integer field per layer. Higher wins.
-**Rationale**: Decoupled from filesystem. Explicit, inspectable.
+**Reversibility**: **Expensive** — all manifests and documentation assume numeric priority ordering. Changing to a different ordering scheme (alphabetical, dependency graph) breaks all existing configurations.
+**Context**: Alternatives considered: directory-name alphabetical ordering (fragile, rename = reorder), explicit dependency declarations (overkill for config layers).
+**Decision**: Mandatory `priority` integer field per layer. Higher wins. Duplicate priorities are a validation error.
+**Rationale**: Decoupled from filesystem. Explicit, inspectable. Simple to reason about.
+**Reconsider when**: layer count per project regularly exceeds 5-10 and priority management becomes painful.
 
 ### ADR-010: Components as opaque lifecycle hooks
 
@@ -1268,12 +1359,14 @@ Container logs are accessible via `podman-compose logs`. AFB doesn't capture or 
 **Decision**: Generate and delegate. AFB writes Containerfile + compose.yaml. Lifecycle delegated to `podman-compose` or `docker-compose`.
 **Rationale**: Keeps AFB's scope tight. Compose tools are mature. Generated files are inspectable.
 
-### ADR-015: Podman preferred, Docker compatible
+### ADR-015: Podman only (v1), Docker deferred (v2)
 
-**Status**: Accepted
-**Decision**: Default to podman. Support docker as fallback. `[container].runtime` in afb.toml.
-**Rationale**: Rootless, daemonless, 15-20% less memory overhead. CLI-compatible with Docker.
-**Consequences**: Test both in CI matrix.
+**Status**: Accepted (rev 2)
+**Context**: v1 needs one working runtime, not two. Podman is preferred for rootless, daemonless operation.
+**Decision**: v1 ships PodmanRuntime adapter only. `ContainerRuntime` port interface exists so DockerRuntime slots in at v2. `[container].runtime` field exists in manifest but only accepts "podman" in v1.
+**Rationale**: Rootless, daemonless, 15-20% less memory overhead. GitHub Actions ubuntu runners have podman pre-installed — no docker-in-docker needed for CI. Halves adapter code and test surface for v1.
+**Consequences**: Users who only have Docker must wait for v2 or contribute the adapter. CI matrix is podman-only.
+**Trigger to add Docker**: user request or deployment target that requires Docker.
 
 ### ADR-016: No Kubernetes for v1
 
@@ -1302,11 +1395,11 @@ Container logs are accessible via `podman-compose logs`. AFB doesn't capture or 
 
 ### ADR-018: Ports & Adapters application architecture
 
-**Status**: Accepted
-**Context**: AFB has 4-5 external dependencies designed to be swappable. Need testability without real external tools.
-**Decision**: Ports & Adapters (Hexagonal) architecture, kept lean. Ports only for external/swappable dependencies. Core domain is pure logic.
-**Rationale**: Makes swappability structural. Go's implicit interfaces keep it lightweight. Unit tests use in-memory adapters. Integration tests use real adapters.
-**Consequences**: Slightly more code than package-per-feature. Interface definitions add files but keep each package focused.
+**Status**: Accepted (rev 2 — reduced port count)
+**Context**: AFB has 2 external dependencies that justify Go-level port interfaces (Git, ContainerRuntime). Other external tools (sync command, filesystem) use simpler mechanisms.
+**Decision**: Ports & Adapters (Hexagonal) architecture, kept lean. Ports only for genuinely swappable dependencies with multiple planned implementations. Core domain is pure logic. No port for sync command (config-level swappability suffices) or filesystem (stdlib is not an abstraction).
+**Rationale**: Makes swappability structural where it matters. Avoids interfaces that mirror stdlib 1:1. Go's implicit interfaces mean ports can be added later if needed.
+**Consequences**: Two ports (Git, ContainerRuntime). Unit tests use `os.MkdirTemp` for filesystem. Sync command tested via real execution in integration tier.
 
 ### ADR-019: No afb uninstall command
 
@@ -1353,10 +1446,41 @@ Container logs are accessible via `podman-compose logs`. AFB doesn't capture or 
 **Decision**: Default project name is `afb-{dirname}`. Shared services use `afb-shared`. Override via `[container].project_name` or `--project` flag.
 **Rationale**: Predictable, readable in `podman-compose ps`, unique enough for single-machine use. No UUID noise.
 
-## Unresolved Questions
+### ADR-024: TOML as manifest format
 
-1. **Shared services management**: should `~/afb-shared/` be a standard convention documented by AFB, or should AFB provide a built-in `afb shared init/up/down` command? Leaning convention — it's just another afb project.
-2. **Per-file merge strategy overrides**: needed, or per-layer sufficient?
-3. **Statistical process control metrics**: what to track, how to couple with logging?
-4. **AgentGateway configuration generation**: how much of the gateway config should AFB generate from `[mcp]` declarations? Investigate AgentGateway's config format.
-5. **afb.local.toml merge edge cases**: what if local manifest adds a layer? Changes priority? Need clear semantics for what local overrides can and cannot do.
+**Status**: Accepted
+**Reversibility**: **Effectively irreversible** once users have manifests.
+**Context**: Candidates: YAML (ubiquitous but whitespace-sensitive, implicit typing), JSON (no comments, verbose), HCL (Terraform-specific ecosystem), CUE (powerful but steep learning curve), TOML (explicit typing, human-readable, good error messages).
+**Decision**: TOML for `afb.toml`, `afb.local.toml`, and `afb.lock`.
+**Rationale**: Explicit typing avoids YAML's "Norway problem." Comments supported. BurntSushi/toml parser is mature with clear error messages. Config-file convention (Cargo.toml, pyproject.toml). Works with mergo for deep merge via `map[string]interface{}` (see `mergo-toml-research.md`).
+**Consequences**: mergo zero-value behavior must be characterized and tested. TOML table-arrays are less intuitive than YAML lists for some users.
+
+### ADR-025: .ai/ directory as versioned integration contract
+
+**Status**: Accepted
+**Reversibility**: Expensive — primary integration surface between AFB and LNAI.
+**Context**: `.ai/` is produced by AFB (composition) and consumed by LNAI (sync). No schema, no version, no compatibility check existed. LNAI is a 239-star project — breaking changes likely.
+**Decision**: `.ai/` is an explicit, versioned contract. AFB writes `.ai-format-version` (currently "1") during composition. Format documented in architecture. Characterized by tests against LNAI's expectations.
+**Rationale**: Low cost now (one file + tests). High cost to retrofit after mysterious sync failures.
+**Consequences**: Must maintain characterization tests against LNAI. Version bump on structural change.
+**References**: LNAI docs: https://lnai.sh/getting-started/introduction/, source: https://github.com/KrystianJonca/lnai
+
+### ADR-026: text/template for container file generation
+
+**Status**: Accepted
+**Context**: Containerfile and compose.yaml are 90% static text with variable insertions. Line-by-line `fmt.Fprintf` in Go tangles format with logic. `text/template` is stdlib.
+**Decision**: Use Go's `text/template` for Containerfile and compose.yaml generation. Template files (`.tmpl`) live alongside generation code.
+**Rationale**: Template looks like the output with `{{.Field}}` holes — readable, diffable, inspectable. Simpler than line-by-line string concatenation. Zero external dependencies (stdlib).
+**Consequences**: Template files are an additional artifact to maintain. Logic in templates should be minimal (loops and conditionals only, no complex expressions).
+
+## Deferred Decisions
+
+| Decision | Current stance | Trigger to revisit |
+|----------|---------------|-------------------|
+| Shared services management | Convention (`~/afb-shared/` as regular afb project) | When >2 projects share services on same machine and convention causes friction |
+| Per-file merge strategy overrides | Per-layer only | When a user needs different merge strategies for different files within the same layer |
+| Statistical process control metrics | Not tracked | When build/sync frequency data is available from structured logs |
+| AgentGateway config generation | Manual gateway config | When first shared MCP server is configured across project containers |
+| afb.local.toml deep merge | Shallow merge only (v1) | When a user needs to override a nested key without replacing the entire top-level table |
+| Docker adapter | Deferred to v2 | User request or deployment target requiring Docker |
+| `afb shell` command | Deferred to v2 | When AFB needs to discover and manage running harness containers from host |
