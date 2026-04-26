@@ -145,7 +145,7 @@ Can be invoked standalone. Also runs automatically inside `afb sync`.
 
 AFB generates Containerfiles and Compose files from `afb.toml`, then delegates lifecycle to `podman-compose` / `docker-compose`.
 
-- `afb build` — generate `.afb/generated/Containerfile` + `compose.yaml`, run `{runtime}-compose build`. `--strict` fails on error
+- `afb build` — generate `.afb/generated/Containerfile` + `compose.yaml`, run `{runtime}-compose build`. `--strict` fails on error. `--generate-only` generates files without invoking container runtime (enables validation without podman)
 - `afb up [--project <name>]` — `{runtime}-compose up -d`. `--project` for parallel test instances
 - `afb down [--project <name>]` — `{runtime}-compose down`
 - `afb rebuild` — build + down + up (convenience)
