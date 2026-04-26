@@ -176,6 +176,8 @@ The actual Containerfile is generated, not templated — AFB writes it line by l
 
 **ENTRYPOINT is configurable** via `[container].entrypoint` in afb.toml. Defaults to the first enabled runtime.
 
+> COMMENT: entrypoint would eventually normally be the workflow orchestrator ?
+
 ### Generated Compose File
 
 AFB generates `.afb/generated/compose.yaml`:
