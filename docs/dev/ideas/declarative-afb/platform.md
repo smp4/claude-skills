@@ -1,0 +1,13 @@
+- the value is not so much knowing who is using your tools, but who is using your competitors tools, and how. 
+- data as slices from geo-located IPs, times, ...
+- containers are ephemeral, every time a new harness is spun up, gets the pull
+- for users, can filter by criteria, quality, risk (single matinatiner, numbercommits, frequency, recency), feature (memory, handoff, orchestration, ...)
+  - user reviews
+  - docs - how to, getting started
+- build a harness
+  - franken-harness
+- for enterprises get started with established harness stacks
+- how to monetise such a platform? must be free for users
+- job board
+- merch
+- product hunt pattern?
