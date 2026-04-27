@@ -1,6 +1,16 @@
+## for tooling providers
+
+- sell usage data
+- product hunt - has an engaged community, sells access to hte community
 - the value is not so much knowing who is using your tools, but who is using your competitors tools, and how. 
 - data as slices from geo-located IPs, times, ...
 - containers are ephemeral, every time a new harness is spun up, gets the pull
+- get data, without needing telemetry from users
+
+## for users
+
+- sell fremium, promote tools, analytics
+- sponsored posts
 - for users, can filter by criteria, quality, risk (single matinatiner, numbercommits, frequency, recency), feature (memory, handoff, orchestration, ...)
   - user reviews
   - docs - how to, getting started
@@ -11,3 +21,5 @@
 - job board
 - merch
 - product hunt pattern?
+
+- seed a bunch of harnesses for launch of website

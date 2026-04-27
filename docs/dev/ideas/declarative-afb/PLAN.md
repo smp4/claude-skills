@@ -13,11 +13,11 @@ See architecture.md for full details.
 
 ## Dogfooding Milestones
 
-| After Phase | Capability |
-|-------------|-----------|
-| 3 | Running container with harness tools installed. Manual config |
-| 5 | Config synced inside container via `afb sync` |
-| 6 | Component versions tracked, lockfile, staleness detection |
+| After Phase | Capability | Shippable? |
+|-------------|-----------|------------|
+| 3 | Running container with harness tools installed. Manual config | Yes — manually-configured container harness. Useful but not declarative |
+| 5 | Config synced inside container via `afb sync`. Full declarative workflow | Yes — core value prop. Declarative config + sync. This is minimum viable AFB |
+| 6 | Component versions tracked, lockfile, staleness detection | Yes — adds reproducibility. Phases 7-9 are polish |
 
 ## Go Project Structure
 
@@ -56,7 +56,9 @@ afb/
 
 ## Acceptance Test Convention
 
-All acceptance tests in `test/acceptance/`, build-tagged `//go:build acceptance`. Each phase gets one test function: `TestPhaseN_Description`. Tests exercise the compiled `afb` binary as a black box via `os/exec`.
+All acceptance tests in `test/acceptance/`, build-tagged `//go:build acceptance`. Each phase gets one test function: `TestPhaseN_Description`. Tests exercise the compiled `afb` binary as a black box via `os/exec` (see ADR-027).
+
+**Test DSL package** (`test/acceptance/harness/`): Thin wrapper over CLI invocations that absorbs output format changes. Acceptance tests use DSL methods instead of raw `exec.Command` + string matching. Example: `harness.Validate(dir).ExpectSuccess()` instead of `exec.Command("afb", "validate", path)`. See domain.md for canonical terminology used in DSL method names. DSL introduced in Phase 1 alongside the first real acceptance test.
 
 Unit tests (TDD within each phase) live alongside code in `internal/` packages, no build tags, no external deps for `domain/` packages.
 
@@ -66,15 +68,15 @@ Integration tests tagged `//go:build integration` (require git). E2E tests tagge
 
 ## Phase 0: Project Scaffolding
 
-**Goal**: Buildable Go project with CI, hooks, tooling, and docs.
+**Goal**: Buildable Go project with hooks, linting, and repo boilerplate.
 
-**Acceptance test**: `TestPhase0_Version` — build `afb` binary, run `afb version`, assert output contains semver string `0.1.0-dev`.
+**Smoke test** (not ATDD — no user-facing behavior yet): `TestPhase0_Version` — build `afb` binary, run `afb version`, assert output contains semver string `0.1.0-dev`. Verifies build pipeline works.
 
 ### Unit 0.1: Go Module + Cobra Skeleton
 
 - **Delivers**: `afb` binary with `version` and `help` subcommands
 - **Files**: `go.mod`, `cmd/afb/main.go`, `cmd/afb/version.go`
-- **Tests first**: acceptance test above
+- **Tests first**: smoke test above
 - **Implementation**:
   - `go mod init github.com/smp4/afb`
   - cobra root command + `version` subcommand
@@ -82,20 +84,7 @@ Integration tests tagged `//go:build integration` (require git). E2E tests tagge
   - zerolog configured: structured JSON to stderr, `AFB_LOG_LEVEL` env var
 - **Deps**: `github.com/spf13/cobra`, `github.com/rs/zerolog`
 
-### Unit 0.2: CI Workflow
-
-- **Delivers**: GitHub Actions pipeline
-- **Files**: `.github/workflows/ci.yml`
-- **Implementation**:
-  - Jobs: `unit` (go test ./...), `lint` (golangci-lint), `format` (gofmt -d)
-  - Go 1.23, ubuntu-latest
-  - Trigger: push + PR to main
-  - Acceptance tests in separate job (`go test -tags acceptance ./test/acceptance/...`)
-  - Integration job: `go test -tags integration ./...` (git pre-installed)
-  - E2e job: `go test -tags e2e ./...` (podman pre-installed, podman-compose via `webgtx/setup-podman-compose@v1`)
-  - E2e runs on merge to main only (slow)
-
-### Unit 0.3: Lefthook
+### Unit 0.2: Lefthook
 
 - **Delivers**: Pre-commit and commit-msg hooks
 - **Files**: `.lefthook.yml`
@@ -103,48 +92,52 @@ Integration tests tagged `//go:build integration` (require git). E2E tests tagge
   - `pre-commit`: `golangci-lint run`, `gofmt -l .` (fail if output), `go test ./internal/domain/...`
   - `commit-msg`: shell regex check for conventional commit format (`^(feat|fix|refactor|docs|test|chore|ci|build)(\(.+\))?: .+`)
   - Parallel where possible
+- **Note**: Second contributor is Claude. Lefthook protects linting errors from reaching CI.
 
-### Unit 0.4: Justfile
-
-- **Delivers**: Common dev commands
-- **Files**: `justfile`
-- **Implementation**:
-  ```
-  default: test
-  build: go build ./cmd/afb
-  test: go test ./...
-  test-acceptance: go test -tags acceptance ./test/acceptance/...
-  test-integration: go test -tags integration ./...
-  test-e2e: go test -tags e2e ./...
-  lint: golangci-lint run
-  fmt: gofmt -w .
-  changelog: # open CHANGELOG.md in $EDITOR
-  ```
-
-### Unit 0.5: Linting Config
+### Unit 0.3: Linting Config
 
 - **Delivers**: golangci-lint configuration
 - **Files**: `.golangci.yml`
 - **Implementation**: Enable `errcheck`, `govet`, `staticcheck`, `unused`, `ineffassign`, `gosimple`. Disable noisy linters. Go 1.23.
 
-### Unit 0.6: Changelog + Docs
-
-- **Delivers**: CHANGELOG.md skeleton, docs/developing.md
-- **Files**: `CHANGELOG.md`, `docs/developing.md`
-- **Implementation**:
-  - CHANGELOG.md: keepachangelog.com format, `[Unreleased]` section
-  - docs/developing.md: prerequisites (Go 1.23, lefthook, just, golangci-lint, hadolint, podman, podman-compose), setup steps, justfile command reference, test tiers, conventional commit format, changelog workflow
-
-### Unit 0.7: Repo Boilerplate
+### Unit 0.4: Repo Boilerplate
 
 - **Delivers**: Standard repo files
 - **Files**: `.gitignore`, `.editorconfig`, `LICENSE`
 - **Implementation**:
   - .gitignore: Go binary, vendor/, .afb/layers/, .afb/generated/, .ai/, afb.local.toml, OS files
-  - .editorconfig: utf-8, lf, 4-space tabs for Go (or tabs — Go standard is tabs)
+  - .editorconfig: utf-8, lf, tabs for Go
   - LICENSE: MIT
 
-**Traces to**: NFR3 (single binary), NFR5 (testable), NFR6 (portable), IMR-2 through IMR-8
+**Deferred to later**: CI workflow (add after Phase 1 when there's code to lint/test), justfile (accumulate commands as they appear), changelog + docs (add when there's something to document).
+
+**Traces to**: NFR3 (single binary), NFR5 (testable), NFR6 (portable)
+
+---
+
+## Spike: mergo Characterization
+
+**Goal**: Retire the biggest technical unknown before writing any composition logic. Verify mergo's zero-value behavior. If unreliable, size the custom transformer work before committing to Phase 4.
+
+**No acceptance test** — this is a spike. The characterization tests ARE the deliverable.
+
+### Unit S.1: mergo Characterization Tests
+
+- **Delivers**: Verified understanding of mergo behavior, especially zero-value edge cases
+- **Files**: `internal/domain/compose/mergo_test.go`
+- **Tests first** (these ARE the deliverable):
+  - `TestMergo_NilSrcPopulatedDst` — dst preserved
+  - `TestMergo_PopulatedSrcNilDst` — src wins
+  - `TestMergo_ArrayReplace` — incoming array replaces existing
+  - `TestMergo_EmptyStringSrcNonEmptyDst` — **incoming wins** (verify)
+  - `TestMergo_ZeroIntSrcNonZeroDst` — **incoming wins** (verify)
+  - `TestMergo_FalseBoolSrcTrueDst` — **incoming wins** (verify)
+  - `TestMergo_EmptySliceSrcPopulatedDst` — incoming wins
+  - `TestMergo_MixedTypeLeafConflict` — incoming wins
+  - `TestMergo_NestedMapMerge` — recursive merge, incoming wins at leaf
+- **Implementation**: If `WithOverwriteWithEmptyValue` unreliable, implement custom `mergo.WithTransformers`.
+- **Deps**: `dario.cat/mergo@v1.0.2`
+- **Decision gate**: If custom transformer needed, add a Unit S.2 to implement it before proceeding to Phase 1.
 
 ---
 
@@ -179,31 +172,11 @@ Integration tests tagged `//go:build integration` (require git). E2E tests tagge
   - `TestValidate_ComponentMissingInstall` → error naming component
   - `TestValidate_LayerMissingSource` → error naming layer
   - `TestValidate_RuntimeNotPodman` → error (v1 podman-only)
+  - `TestValidate_InvalidMergeArrays` → error for invalid merge_arrays value
   - `TestValidate_ValidManifest` → no errors
 - **Implementation**: Iterate components, layers, check invariants. Return all errors (not first-fail).
 
-### Unit 1.3: Local Manifest Merge
-
-- **Delivers**: `manifest.MergeLocal(base, local *Manifest) *Manifest` — shallow merge
-- **Files**: `internal/domain/manifest/local.go`, `local_test.go`
-- **Tests first**:
-  - `TestMergeLocal_OverridesTopLevelKey` — local [container] replaces base [container]
-  - `TestMergeLocal_PreservesUnsetKeys` — keys not in local preserved from base
-  - `TestMergeLocal_NoLocalFile` — returns base unchanged
-- **Implementation**: Shallow merge — top-level TOML tables in local replace same in base.
-
-### Unit 1.4: Variable Expansion
-
-- **Delivers**: `manifest.ExpandVars(m *Manifest, projectRoot string)` — expands `${version_spec}`, `${scripts_dir}`, `${project_root}`
-- **Files**: `internal/domain/manifest/expand.go`, `expand_test.go`
-- **Tests first**:
-  - `TestExpandVars_VersionSpec` — `${version_spec}` in install → replaced
-  - `TestExpandVars_ScriptsDir` — `${scripts_dir}` → value from settings
-  - `TestExpandVars_ProjectRoot` — `${project_root}` → absolute path
-  - `TestExpandVars_UnknownVar` — `${unknown}` → left as-is (no error)
-- **Implementation**: Simple `strings.ReplaceAll` per variable. No template engine.
-
-### Unit 1.5: `afb validate` Command
+### Unit 1.3: `afb validate` Command
 
 - **Delivers**: Cobra subcommand wiring
 - **Files**: `cmd/afb/validate.go`
@@ -217,14 +190,15 @@ Integration tests tagged `//go:build integration` (require git). E2E tests tagge
 
 **Goal**: Generate Containerfile + compose.yaml from manifest. Build image.
 
-**Acceptance test**: `TestPhase2_Build`
+**Acceptance test**: `TestPhase2_Build` (tagged `//go:build e2e`)
 - Create test manifest in temp dir
-- `afb build --generate-only` → generates `.afb/generated/Containerfile` + `compose.yaml`
+- `afb build` → generates Containerfile + compose.yaml AND builds image
 - Assert Containerfile contains expected FROM, component install commands
 - Assert compose.yaml contains expected services, networks, volumes
 - Validate: `hadolint .afb/generated/Containerfile` exits 0
 - Validate: `podman-compose -f .afb/generated/compose.yaml config --quiet` exits 0
-- (E2e variant): `afb build` (no flag) → image built, `podman image inspect` succeeds
+- Assert: `podman image inspect afb-{testdir}:latest` succeeds (image actually built)
+- (CI shortcut): `TestPhase2_BuildGenerateOnly` (no e2e tag) — `afb build --generate-only` for validation-only CI jobs that don't need podman
 
 ### Unit 2.1: Containerfile Generation
 
@@ -262,7 +236,19 @@ Integration tests tagged `//go:build integration` (require git). E2E tests tagge
   - `TestPodmanBuild_ValidContainerfile` — builds image, returns image ID
 - **Implementation**: Shell out to `podman build`. Tag: `afb-{dirname}:latest`.
 
-### Unit 2.4: `afb build` Command
+### Unit 2.4: Variable Expansion
+
+- **Delivers**: `manifest.ExpandVars(m *Manifest, projectRoot string)` — expands `${version_spec}`, `${scripts_dir}`, `${project_root}`
+- **Files**: `internal/domain/manifest/expand.go`, `expand_test.go`
+- **Tests first**:
+  - `TestExpandVars_VersionSpec` — `${version_spec}` in install → replaced
+  - `TestExpandVars_ScriptsDir` — `${scripts_dir}` → value from settings
+  - `TestExpandVars_ProjectRoot` — `${project_root}` → absolute path
+  - `TestExpandVars_UnknownVar` — `${unknown}` → left as-is (no error)
+- **Implementation**: Simple `strings.ReplaceAll` per variable. No template engine.
+- **Note**: Moved from Phase 1 — needed here for `${version_spec}` in component install commands within generated Containerfile.
+
+### Unit 2.5: `afb build` Command
 
 - **Delivers**: Cobra subcommand
 - **Files**: `cmd/afb/build.go`
@@ -334,24 +320,7 @@ After Phase 3: create a real `afb.toml` for a project, `afb build && afb up`, ge
   - `TestGitCLI_Pull` — pull updates
 - **Implementation**: Shell out to `git clone`, `git pull`, `git rev-parse HEAD`.
 
-### Unit 4.2: mergo Characterization Tests
-
-- **Delivers**: Verified understanding of mergo behavior, especially zero-value edge cases
-- **Files**: `internal/domain/compose/mergo_test.go`
-- **Tests first** (these ARE the deliverable):
-  - `TestMergo_NilSrcPopulatedDst` — dst preserved
-  - `TestMergo_PopulatedSrcNilDst` — src wins
-  - `TestMergo_ArrayReplace` — incoming array replaces existing
-  - `TestMergo_EmptyStringSrcNonEmptyDst` — **incoming wins** (verify)
-  - `TestMergo_ZeroIntSrcNonZeroDst` — **incoming wins** (verify)
-  - `TestMergo_FalseBoolSrcTrueDst` — **incoming wins** (verify)
-  - `TestMergo_EmptySliceSrcPopulatedDst` — incoming wins
-  - `TestMergo_MixedTypeLeafConflict` — incoming wins
-  - `TestMergo_NestedMapMerge` — recursive merge, incoming wins at leaf
-- **Implementation**: If `WithOverwriteWithEmptyValue` unreliable, implement custom `mergo.WithTransformers`.
-- **Deps**: `dario.cat/mergo@v1.0.2`
-
-### Unit 4.3: Deep Merge Implementation
+### Unit 4.2: Deep Merge Implementation
 
 - **Delivers**: `compose.DeepMerge(dst, src map[string]any) error`
 - **Files**: `internal/domain/compose/merge.go`, `merge_test.go`
@@ -365,7 +334,7 @@ After Phase 3: create a real `afb.toml` for a project, `afb build && afb up`, ge
 - **Implementation**: Wrapper around mergo with correct flags. Parse file by extension → `map[string]any` → merge → serialize back.
 - **Deps**: `gopkg.in/yaml.v3`, `encoding/json`
 
-### Unit 4.4: Compose Algorithm
+### Unit 4.3: Compose Algorithm
 
 - **Delivers**: `compose.Run(layers []Layer, projectDir string, outputDir string) error`
 - **Files**: `internal/domain/compose/compose.go`, `compose_test.go`
@@ -377,23 +346,108 @@ After Phase 3: create a real `afb.toml` for a project, `afb build && afb up`, ge
   - `TestCompose_AtomicReplace` — old .ai/ fully replaced
   - `TestCompose_FormatVersion` — .ai-format-version = "1" written
   - `TestCompose_OverwriteStrategy` — layer with strategy=overwrite replaces all files
+  - `TestCompose_MergeArraysAppend` — layer with merge_arrays=append concatenates arrays
+  - `TestCompose_MergeArraysReplace` — default: incoming array replaces existing
 - **Implementation**: Algorithm from architecture.md §Layer Composition Algorithm. Temp dir → compose → atomic rename.
 
 **Traces to**: FR2, NFR1
 
 ---
 
-## Phase 5: Sync Orchestration
+## Phase 5: Sync Pipeline
 
-**Goal**: Full sync pipeline: pull → compose → validate → sync command → lockfile. Idempotent.
+**Goal**: Pull → compose → validate → sync command. Idempotent. No lockfile yet.
 
 **Acceptance test**: `TestPhase5_Sync`
 - Project dir with manifest, layers (local dirs, not git for test simplicity), mock sync command (script that copies .ai/ content to .claude/)
-- `afb sync` → .ai/ populated, sync command ran, afb.lock written with layer hashes
-- Modify nothing. `afb sync` again → .ai/ byte-identical (idempotency check via checksum)
-- Assert lockfile has `[layers.X].ref_resolved`, `[components.Y].install_ok`
+- `afb sync` → .ai/ populated, sync command ran
+- Modify nothing. `afb sync` again → .ai/ byte-identical (idempotency check via checksum — see ADR-028)
+- `afb layer pull` → updates layer dirs from upstream
 
-### Unit 5.1: Lockfile Read/Write
+### Unit 5.1: Local Manifest Merge
+
+- **Delivers**: `manifest.MergeLocal(base, local *Manifest) *Manifest` — shallow merge
+- **Files**: `internal/domain/manifest/local.go`, `local_test.go`
+- **Tests first**:
+  - `TestMergeLocal_OverridesTopLevelKey` — local [container] replaces base [container]
+  - `TestMergeLocal_PreservesUnsetKeys` — keys not in local preserved from base
+  - `TestMergeLocal_NoLocalFile` — returns base unchanged
+- **Implementation**: Shallow merge — top-level TOML tables in local replace same in base.
+- **Note**: Moved from Phase 1 — consumed first by sync pipeline.
+
+### Unit 5.2: Sync Orchestrator
+
+- **Delivers**: `sync.Run(m *Manifest, git ports.Git, opts SyncOpts) error`
+- **Files**: `internal/sync/sync.go`, `sync_test.go`
+- **Tests first** (integration):
+  - `TestSync_FullPipeline` — layers cloned, composed, validated, sync cmd run
+  - `TestSync_ConfigOnly` — `--config` flag skips components
+  - `TestSync_ComponentsOnly` — `--components` flag skips composition
+  - `TestSync_ValidationFailure` — validation error → sync cmd NOT run, exit code 2
+  - `TestSync_SyncCmdFailure` — sync cmd fails → exit code 3
+  - `TestSync_Idempotent` — two runs, identical .ai/
+- **Implementation**: Orchestrate steps from architecture.md §afb sync (detailed). Shell out sync command via `os/exec`. Exit codes: 0 success, 1 composition, 2 validation, 3 sync cmd.
+
+### Unit 5.3: `afb sync` + `afb layer pull` Commands
+
+- **Delivers**: Cobra subcommands. `afb sync` with `--config`, `--components`, `--pull` flags. `afb layer pull [name]` pulls specified (or all) layer dirs.
+- **Files**: `cmd/afb/sync.go`, `cmd/afb/layerpull.go`
+- **Implementation**: Wire manifest + git adapter + sync orchestrator. Log summary.
+
+### Unit 5.4: Update Containerfile Template
+
+- **Delivers**: Add `RUN afb sync` step to Containerfile template
+- **Files**: `internal/domain/generate/containerfile.tmpl` (update)
+- **Tests**: Update `TestContainerfile_*` to assert `RUN afb sync` present
+- **Implementation**: Add sync step after project clone, before runtime ENV.
+
+### Unit 5.5: LNAI Contract Characterization Test
+
+- **Delivers**: Test asserting LNAI accepts composed `.ai/` directory
+- **Files**: `test/integration/lnai_contract_test.go`
+- **Tests first** (integration):
+  - `TestLNAIContract_AcceptsComposedAIDir` — compose layers → run `lnai sync` → exit 0
+  - `TestLNAIContract_FormatVersionPresent` — `.ai-format-version` = "1" is present and accepted
+- **Implementation**: Real `lnai sync` against composed output. Tagged `//go:build integration`.
+
+### Unit 5.6: FR11 Remote/Session Compatibility Test
+
+- **Delivers**: Verification that AFB works headlessly (SSH, tmux)
+- **Files**: `test/acceptance/remote_test.go`
+- **Tests first**:
+  - `TestFR11_NoTTY` — run `afb sync` with `TERM=dumb` and no TTY attached → exit 0, no ANSI escape codes in stdout/stderr
+- **Implementation**: Use `os/exec` with no `Stdin` attached. Scan output for `\x1b[` sequences.
+- **Note**: Cheap test that catches the common failure mode (colored output breaking in pipes/tmux).
+
+### Unit 5.7: FR7 Observability Test
+
+- **Delivers**: Verification that structured logging works
+- **Files**: `test/acceptance/observability_test.go`
+- **Tests first**:
+  - `TestFR7_StructuredLogs` — run `afb sync` with `AFB_LOG_LEVEL=debug` → capture stderr, assert each non-empty line parses as valid JSON
+- **Implementation**: Catches regressions where someone uses `fmt.Println` instead of zerolog.
+
+**Traces to**: FR1, FR2, FR7, FR9, FR11, NFR1, NFR2
+
+### 🎯 Dogfood Milestone 2
+
+After Phase 5: `afb sync && afb build && afb up` gives a container with composed config, synced to runtime-native formats. Full declarative workflow operational.
+
+---
+
+## Phase 6: Lockfile & Version Management
+
+**Goal**: Lockfile read/write, version resolution, staleness detection, install failure handling. All lockfile concerns in one phase.
+
+**Acceptance test**: `TestPhase6_Lock`
+- `afb sync` in test project → lockfile written with layer hashes and component versions
+- `afb lock --check` → exit 0 (fresh)
+- Edit afb.toml: change a component's `version_spec`
+- `afb lock --check` → exit non-zero (stale)
+- `afb lock` → lockfile updated, new version resolved
+- `afb lock --check` → exit 0 again
+
+### Unit 6.1: Lockfile Read/Write
 
 - **Delivers**: `lock.Load(path) (*Lockfile, error)`, `lock.Write(lf *Lockfile, path string) error`
 - **Files**: `internal/domain/lock/lock.go`, `lock_test.go`
@@ -404,53 +458,7 @@ After Phase 3: create a real `afb.toml` for a project, `afb build && afb up`, ge
   - `TestLockfile_ContainerEntry` — image_id, built_at
 - **Implementation**: TOML serialization via BurntSushi/toml. Comment header with generation timestamp.
 
-### Unit 5.2: Sync Orchestrator
-
-- **Delivers**: `sync.Run(m *Manifest, git ports.Git, opts SyncOpts) error`
-- **Files**: `internal/sync/sync.go`, `sync_test.go`
-- **Tests first** (integration):
-  - `TestSync_FullPipeline` — layers cloned, composed, validated, sync cmd run, lockfile written
-  - `TestSync_ConfigOnly` — `--config` flag skips components
-  - `TestSync_ComponentsOnly` — `--components` flag skips composition
-  - `TestSync_ValidationFailure` — validation error → sync cmd NOT run, exit code 2
-  - `TestSync_SyncCmdFailure` — sync cmd fails → exit code 3
-  - `TestSync_Idempotent` — two runs, identical .ai/
-- **Implementation**: Orchestrate steps from architecture.md §afb sync (detailed). Shell out sync command via `os/exec`. Exit codes: 0 success, 1 composition, 2 validation, 3 sync cmd, 4 component install.
-
-### Unit 5.3: `afb sync` Command
-
-- **Delivers**: Cobra subcommand with `--config`, `--components`, `--pull` flags
-- **Files**: `cmd/afb/sync.go`
-- **Implementation**: Wire manifest + git adapter + sync orchestrator. Log summary.
-
-### Unit 5.4: Update Containerfile Template
-
-- **Delivers**: Add `RUN afb sync` step to Containerfile template
-- **Files**: `internal/domain/generate/containerfile.tmpl` (update)
-- **Tests**: Update `TestContainerfile_*` to assert `RUN afb sync` present
-- **Implementation**: Add sync step after project clone, before runtime ENV.
-
-**Traces to**: FR1, FR2, FR9, NFR1, NFR2
-
-### 🎯 Dogfood Milestone 2
-
-After Phase 5: `afb sync && afb build && afb up` gives a container with composed config, synced to runtime-native formats. Full declarative workflow operational.
-
----
-
-## Phase 6: Lockfile & Component Management
-
-**Goal**: Version resolution, staleness detection, install failure handling.
-
-**Acceptance test**: `TestPhase6_LockCheck`
-- `afb sync` in test project → lockfile written
-- `afb lock --check` → exit 0 (fresh)
-- Edit afb.toml: change a component's `version_spec`
-- `afb lock --check` → exit non-zero (stale)
-- `afb lock` → lockfile updated, new version resolved
-- `afb lock --check` → exit 0 again
-
-### Unit 6.1: Version Hook Execution
+### Unit 6.2: Version Hook Execution
 
 - **Delivers**: Run component's `version` command, capture stdout
 - **Files**: `internal/runner/version.go`, `version_test.go`
@@ -459,7 +467,7 @@ After Phase 5: `afb sync && afb build && afb up` gives a container with composed
   - `TestVersionHook_NoHook` — component without version → `installed_version` empty
   - `TestVersionHook_FailingHook` — exit non-zero → logged, install_ok still based on install
 
-### Unit 6.2: Staleness Check
+### Unit 6.3: Staleness Check
 
 - **Delivers**: `lock.Check(manifest *Manifest, lockfile *Lockfile) (bool, []string)`
 - **Files**: `internal/domain/lock/check.go`, `check_test.go`
@@ -470,7 +478,7 @@ After Phase 5: `afb sync && afb build && afb up` gives a container with composed
   - `TestCheck_NewComponent` — component added → false
   - `TestCheck_RemovedComponent` — component removed → false
 
-### Unit 6.3: Install Failure Handling
+### Unit 6.4: Install Failure Handling
 
 - **Delivers**: Log error + continue (default), abort (--strict)
 - **Files**: extend `internal/sync/sync.go`
@@ -479,12 +487,24 @@ After Phase 5: `afb sync && afb build && afb up` gives a container with composed
   - `TestInstallFailure_StrictAborts` — first failure stops all
   - `TestInstallFailure_RecordedInLockfile` — `install_ok = false`
 
-### Unit 6.4: `afb lock` Commands
+### Unit 6.5: Lockfile Integration with Sync
+
+- **Delivers**: `afb sync` writes lockfile as side effect. Lockfile records layer commit hashes and component versions after sync completes.
+- **Files**: extend `internal/sync/sync.go`
+- **Tests first**:
+  - `TestSync_WritesLockfile` — after sync, afb.lock exists with correct entries
+  - `TestSync_LockfileLayerHashes` — lockfile records resolved commit hashes
+
+### Unit 6.6: `afb lock` Commands
 
 - **Delivers**: `afb lock`, `afb lock --check`
 - **Files**: `cmd/afb/lock.go`
 
 **Traces to**: FR1, NFR1, NFR2
+
+### 🎯 Dogfood Milestone 3
+
+After Phase 6: Component versions tracked, lockfile records resolved state, staleness detection available.
 
 ---
 
@@ -557,6 +577,8 @@ After Phase 5: `afb sync && afb build && afb up` gives a container with composed
   - `TestRuntimeDiff_Clean` — no drift
   - `TestRuntimeDiff_ModifiedRuntimeConfig` — reports changed .claude/ file
 - **Implementation**: Compose to temp dir → run sync command in temp HOME → diff output against actual runtime dirs.
+- **Why this complexity is necessary**: LLM runtimes modify their own configs (e.g., Claude Code adding an MCP server via UI). Composition drift alone (`.ai/` check) misses these changes because they happen downstream of `.ai/`. The temp HOME approach is the simplest way to get expected runtime state without assuming the sync command has a `--dry-run` mode.
+- **Why no simpler alternative**: (a) Skip runtime diff entirely — misses LLM self-modifications, which is a primary use case for drift detection. (b) Assume `lnai sync --dry-run` — couples to LNAI internals, breaks when sync command is swapped. (c) Diff runtime dirs against last-known-good snapshot — requires storing snapshots, adds state management. The temp HOME approach is stateless and sync-command-agnostic.
 
 ### Unit 8.3: Doctor Orchestrator
 
@@ -591,7 +613,7 @@ After Phase 5: `afb sync && afb build && afb up` gives a container with composed
 - `afb run mycomp.doctor` → stdout contains "healthy"
 - (Push tested with local bare git repo)
 - Clone layer from local bare repo, modify a file
-- `afb push mylayer` → bare repo has the change
+- `afb push mylayer` → bare repo has the change, afb.toml ref updated to new commit hash
 
 ### Unit 9.1: Script Runner
 
@@ -613,14 +635,18 @@ After Phase 5: `afb sync && afb build && afb up` gives a container with composed
   - `TestRunComponentCmd_CommandNotFound` — error: "component 'x' has no command 'y'"
   - `TestRunComponentCmd_ComponentNotFound` — error: "unknown component 'x'"
 
-### Unit 9.3: Layer Push
+### Unit 9.3: Layer Push with Version Pin Update
 
-- **Delivers**: `push.Layer(layerDir string, git ports.Git) error`
+- **Delivers**: `push.Layer(layerDir string, git ports.Git, manifest *Manifest) error` — push + update manifest pin
 - **Files**: `internal/push/push.go`, `push_test.go`
 - **Tests first** (integration):
   - `TestPushLayer_PushesToRemote` — changes visible in bare repo
+  - `TestPushLayer_UpdatesManifestRef` — afb.toml ref updated to new commit hash
+  - `TestPushLayer_MutableRefPreserved` — if ref is branch name (e.g., "main"), ref stays as branch name, lockfile updated
+  - `TestPushLayer_PinnedRefUpdated` — if ref is commit hash, updated to new hash
+  - `TestPushLayer_TagRefWarns` — if ref is tag, updated to commit hash with warning
   - `TestPushLayer_AllLayers` — push all layer dirs
-- **Implementation**: `git -C <layer-dir> push` via Git port.
+- **Implementation**: See architecture.md §Layer Version Consistency. Push via Git port, get new commit hash, update afb.toml and afb.lock.
 
 ### Unit 9.4: `afb run` + `afb push` Commands
 
@@ -635,62 +661,26 @@ After Phase 5: `afb sync && afb build && afb up` gives a container with composed
 ## Dependency Graph
 
 ```
-Phase 0 ──► Phase 1 ──► Phase 2 ──► Phase 3  [dogfood 1]
-                  │
-                  ├────► Phase 4 ──► Phase 5  [dogfood 2]
-                  │                     │
-                  │                     ├──► Phase 6
-                  │                     └──► Phase 8
-                  │
-                  ├────► Phase 7
-                  └────► Phase 9
+Phase 0 ──► Spike (mergo) ──► Phase 1 ──► Phase 2 ──► Phase 3  [dogfood 1]
+                                   │
+                                   ├────► Phase 4 ──► Phase 5  [dogfood 2]
+                                   │                     │
+                                   │                     ├──► Phase 6  [dogfood 3]
+                                   │                     └──► Phase 8
+                                   │
+                                   ├────► Phase 7
+                                   └────► Phase 9
 ```
 
 Phases 7, 8, 9 can be parallelised after their dependencies are met.
 
-## Risk Register
+**Descoping strategy**: If time/energy runs out, stop at the nearest dogfood milestone. Phase 5 = minimum viable AFB (declarative config + sync). Phase 3 = useful but manual. Phases 7-9 are polish — valuable but not required for core workflow.
 
-| Risk | Likelihood | Impact | Mitigation |
-|------|-----------|--------|------------|
-| mergo zero-value override bug | Medium | High | Characterization tests in Phase 4 before any composition logic. Custom transformer if needed |
-| podman-compose feature gaps | Low-Medium | Medium | Use only safe feature subset (architecture.md table). Validate in CI |
-| LNAI breaking changes | Medium | Medium | Pin version. Sync command configurable via `[sync].command` |
-| Containerfile without `afb sync` (Phase 2-3) | — | Low | Known limitation until Phase 5. Document in Phase 2 AT |
-| E2e tests slow CI | Medium | Low | Run e2e only on merge to main. Unit tests on every push. `--generate-only` enables validation without podman |
-| lefthook new to user | Low | Low | Simple config, documented in developing.md |
+## Cross-Cutting Concerns
 
-## Fitness Functions
+Risk register, fitness functions, decision reversibility, and external dependencies are maintained in architecture.md (long-lived, not plan-specific).
 
-| Property | Check | Automation |
-|---|---|---|
-| Composition idempotency | `afb sync` twice, diff .ai/ | CI job (Phase 5+) |
-| Containerfile validity | hadolint on generated Containerfile | CI job (Phase 2+) |
-| Compose spec validity | `podman-compose config --quiet` | CI job (Phase 2+) |
-| Unit test tier isolation | `go test ./internal/domain/...` — no git/podman/network | CI: separate job, no tools installed |
-| Conventional commits | commit-msg hook regex | lefthook |
-| Lint clean | golangci-lint | lefthook pre-commit + CI |
-
-## Decision Reversibility
-
-| Decision | Reversibility | Notes |
-|---|---|---|
-| TOML manifest format | Irreversible | All config depends on it (ADR-024) |
-| Array replace as merge default | Expensive | All layer content assumes this (ADR-006) |
-| Integer priority ordering | Expensive | All manifests assume numeric order (ADR-009) |
-| Podman only (v1) | Cheap | ContainerRuntime port exists for Docker (ADR-015) |
-| lefthook for hooks | Cheap | Swap for any git hook manager |
-| mergo for deep merge | Moderate | Custom transformer may be needed anyway (ADR-004) |
-| cobra for CLI | Moderate | Standard choice, unlikely to change |
-
-## External Dependencies
-
-| Dependency | Failure mode | Stability | Fallback |
-|---|---|---|---|
-| git CLI | Layer clone/push fails | Stable | None needed |
-| podman + podman-compose | Container build/lifecycle fails | Stable | Docker adapter v2 |
-| lnai | Sync command fails | Medium (239★) | Configurable `[sync].command` |
-| mergo | Merge edge cases | Stable (9k★) | Custom transformer |
-| hadolint | Containerfile lint unavailable | Stable | Non-blocking skip |
+**Plan-specific risk**: Containerfile generated in Phases 2-3 has no `RUN afb sync` line until Phase 5. Known limitation, documented in Phase 2 acceptance test.
 
 ## Verification
 

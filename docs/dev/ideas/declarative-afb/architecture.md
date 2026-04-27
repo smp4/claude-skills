@@ -543,11 +543,13 @@ source = "git@github.com:user/ai-base-config.git"
 priority = 10
 ref = "main"                    # branch, tag, or commit hash (default: default branch)
 # strategy: merge (default) | overwrite
+# merge_arrays: replace (default) | append
 
 [layers.team]
 source = "git@github.com:team/ai-config.git"
 priority = 20
 ref = "v1.2.0"                 # pin to specific tag
+merge_arrays = "append"         # this layer appends arrays instead of replacing
 
 # --- Components ---
 # install is required. version, doctor, and user-defined commands are optional.
@@ -792,6 +794,8 @@ Cloning external git repos into `.afb/layers/` (which is gitignored) does not ca
 
 Array replace is the safe default — predictable, avoids duplication. Uses `mergo.WithOverride` and `mergo.WithOverwriteWithEmptyValue` flags.
 
+**Per-layer array merge override**: `merge_arrays` field per layer. Values: `replace` (default) | `append`. When `append`, incoming arrays are concatenated to existing arrays instead of replacing them. This is an escape hatch for the common case where a layer needs to extend a list (e.g., adding MCP servers) without duplicating the base layer's entries. Optional field — omitting it means `replace`.
+
 **Known risk — mergo zero-value behavior**: mergo may treat empty/zero values (empty string, 0, false) as "unset" and skip override even with `WithOverride`. This contradicts the "incoming wins at leaf" rule. `WithOverwriteWithEmptyValue` is documented to handle this but has reported inconsistencies (mergo issues #54, #190). Characterization tests for all zero-value combinations are required before trusting merge semantics. If unreliable, implement a custom `mergo.WithTransformers` for leaf override. See `mergo-toml-research.md`.
 
 ## Drift Detection
@@ -965,10 +969,14 @@ Core operations must satisfy these measurable criteria before v1:
 
 Automated checks that run in CI to prevent architectural drift:
 
-- **Composition idempotency**: CI job runs `afb sync` twice, diffs output — non-zero diff = failure
+- **Composition idempotency**: CI job runs `afb sync` twice, computes SHA-256 of each file in `.ai/` (sorted by path), compares — any difference = failure. Structured as a dedicated CI job that (1) runs `afb sync`, (2) captures hashes, (3) runs `afb sync` again, (4) captures hashes, (5) asserts identical. See ADR-028
 - **Containerfile lint**: hadolint on generated Containerfile — catches structural errors without building
 - **Compose validation**: `podman-compose config --quiet` on generated compose.yaml — catches spec violations
-- **Test tier isolation**: `go test ./internal/domain/...` runs with no git/podman/network — if it hangs or fails on missing tool, tier boundary is broken
+- **Test tier isolation**: Enforced two ways: (a) CI job runs `go test ./internal/domain/...` inside a container image with no git/podman/network installed — if it fails, tier boundary is broken; (b) CI step greps for `os/exec` in `internal/domain/` — any match = failure (domain packages must not shell out)
+- **Domain package purity**: `internal/domain/` must have no imports of `os/exec` or adapter packages. Enforced by grep in CI: `grep -r 'os/exec\|internal/adapters' internal/domain/` must return empty
+- **Unit test speed**: CI step asserts `go test ./internal/domain/...` completes in < 5s. `time` wrapper + threshold check. Catches performance regressions
+- **Conventional commits**: commit-msg hook regex via lefthook — enforced locally on every commit
+- **Lint clean**: golangci-lint in pre-commit hook + CI — prevents lint regressions
 
 ### Three Tiers
 
@@ -1203,6 +1211,106 @@ afb doctor                  # warns: template upstream has new commits
 afb rebuild                 # apply changes
 ```
 
+## Layer Version Consistency
+
+### The Problem
+
+When a user (or an LLM runtime) modifies config that the user wants to promote to a layer, a version consistency gap arises:
+
+1. `afb.toml` pins `[layers.team].ref = "v1.2.0"` (resolved to commit `abc123`)
+2. User edits files in `.afb/layers/team/` locally (e.g., LLM added an MCP server via its UI, user spotted it via `afb diff`, cherry-picked it into the team layer)
+3. `afb push team` pushes the change to the upstream layer repo → new commit `def456`
+4. **Gap**: `afb.toml` still says `ref = "v1.2.0"`. Next `afb sync` pulls the old pinned version, overwriting the just-pushed change
+5. **Secondary gap**: the container image was built with old layer content — it's now stale
+
+### Solution: `afb push` updates the manifest pin
+
+`afb push <layer>` does the following:
+
+```
+1. git -C .afb/layers/<layer>/ add -A
+2. git -C .afb/layers/<layer>/ commit -m "<message>"  (if uncommitted changes)
+3. git -C .afb/layers/<layer>/ push
+4. new_hash ← git -C .afb/layers/<layer>/ rev-parse HEAD
+5. Update afb.toml: [layers.<layer>].ref = new_hash
+6. Update afb.lock: [layers.<layer>].ref_resolved = new_hash
+7. Log: "pushed team → def456, updated afb.toml pin"
+```
+
+**Behavior by ref type:**
+
+| Original ref | After push | Rationale |
+|---|---|---|
+| Mutable branch (`main`) | ref stays `main`, lockfile updated with new commit hash | Branch tracks HEAD. Next `afb sync --pull` gets the new content naturally |
+| Pinned tag (`v1.2.0`) | ref updated to new commit hash. Warning: "ref was tag v1.2.0, now pinned to commit def456. Create a new tag if needed" | Tag is immutable. Push creates a new commit beyond the tag. User may want to tag the new commit |
+| Pinned commit hash (`abc123`) | ref updated to new commit hash `def456` | Explicit pin must be updated to stay consistent |
+
+**Why update afb.toml, not just lockfile?** The lockfile is generated — `afb sync` overwrites it. If we only update lockfile, the next sync reads the manifest's stale pin and pulls the old version. The manifest is the source of truth and must reflect the new state.
+
+**Consequence**: `afb push` modifies a committed file (`afb.toml`). This is intentional — the push is a deliberate act that changes the desired state. The user should commit the updated `afb.toml` alongside their next commit. `afb push` logs a reminder: "afb.toml updated — commit to persist the new layer pin."
+
+### Container staleness after push
+
+After `afb push`, the container image is stale (built with old layer content). The user must `afb rebuild` to get a container with the new config. This is already the documented workflow for any config change.
+
+For cross-machine consistency:
+- **Same machine**: `afb rebuild` after push. Immediate
+- **Other machines**: run `afb sync` (which runs `afb layer pull` if `--pull` flag or if layers missing) → gets new content via the updated ref → `afb rebuild`. Or pull the rebuilt image from a container registry if available
+
+Container image tagging remains `afb-{dirname}:latest`. Content-addressable image tags (based on manifest + lockfile hash) deferred — adds complexity without clear need at solo-dev scale.
+
+### The LLM config evolution flow
+
+A common workflow: an LLM runtime modifies its own config (e.g., Claude Code adds an MCP server via UI). The user wants to make this permanent:
+
+```
+# Inside container
+afb diff                           # spots runtime drift: .claude/settings.json changed
+# User inspects the change, decides to keep it
+# User copies the relevant config into .afb/project/ or a layer dir
+afb sync                           # recompose — adopted change now in .ai/
+afb push team                      # push to upstream layer (if it went to a layer)
+                                   # afb.toml pin updated automatically
+# On host
+afb rebuild                        # new container with updated config
+```
+
+This flow lets config evolve from runtime experiments → layer permanence → cross-project sharing, without manual version juggling.
+
+## Caching Strategy
+
+Every `afb.toml` change that affects the container requires `afb rebuild` — a full image build. With component installs (npm, apt, go install), this can take minutes. Caching reduces iteration time for both AFB developers and AFB users.
+
+### Containerfile Layer Ordering
+
+The generated Containerfile orders layers for maximum cache reuse:
+
+1. **System deps** (apt-get) — changes rarely
+2. **Extra packages** — changes occasionally
+3. **AFB binary** — changes per AFB release
+4. **Component installs** — changes when versions bump
+5. **Extra run commands** — changes occasionally
+6. **Project clone** — changes per commit
+7. **afb sync** — changes when config changes
+
+Changing a component version invalidates layers 4-7 but preserves 1-3. Changing only project code invalidates only 6-7.
+
+### For AFB developers
+
+- **Podman build cache**: default behavior, no configuration needed. Podman caches intermediate layers
+- **Multi-stage builds**: if component installs become slow, consider a pre-built base image with common tools, referenced via `base_image` in manifest
+- **`--generate-only`**: validate Containerfile + compose without building. Fast feedback loop for template changes
+
+### For AFB users in production
+
+- **Base image pinning**: use a specific digest for `base_image` to avoid upstream surprises
+- **Container registry**: push built images to a registry. Other machines pull instead of rebuilding. Avoids rebuild latency on fresh machines
+- **Layer caching in CI**: CI runners can use `--cache-from` to pull previous image layers
+
+### Unmitigated
+
+Harness config changes (adding/removing layers, changing merge strategy) always require a full `afb sync` + `afb rebuild`. No incremental composition yet — the atomic-replace design of `.ai/` means every sync recomputes from scratch. This is acceptable at current scale but could become a bottleneck with many layers or large config trees.
+
 ## Observability
 
 Structured logs to stderr via zerolog:
@@ -1235,16 +1343,47 @@ Container logs are accessible via `podman-compose logs`. AFB doesn't capture or 
 | Image build time                                                        | Slow iteration                         | Medium     | Layer caching. Base image with common tools. Only changed layers rebuild                                  |
 | OAuth token refresh in container                                        | Auth breaks mid-session                | Low        | Named volume for `~/.claude/`. Token refresh writes to volume                                             |
 | Abstraction fatigue (afb wraps compose wraps containers wraps runtimes) | Debugging depth                        | Medium     | Keep AFB scope to generation. Each layer independently inspectable. Structured logging                    |
-| Gas City pack system overlaps with afb layers                           | Both try to configure agents           | Unknown    | Defer until Gas City evaluation. Different scopes: afb = harness config, Gas City = agent orchestration   |
+| Gas City pack system overlaps with afb layers                           | Both try to configure agents           | Unknown    | Gas City is a user component — users may add it to their harness or not. It is not a required part of AFB. Different scopes: afb = harness config, Gas City = agent orchestration. No AFB plan dependency |
 | AgentGateway breaking changes                                           | Shared MCP access breaks               | Low        | Pin version. Gateway is optional — fallback to in-container stdio                                         |
 | Lockfile can't track all component versions                             | Imperfect reproducibility              | Medium     | Best-effort: track what's trackable. Layers always get commit hashes. Document limitations                |
 | mergo zero-value override bug                                           | Empty/zero values silently not merged  | Medium     | Characterization tests before writing composition logic. Custom transformer if `WithOverwriteWithEmptyValue` unreliable |
+| E2E tests slow CI                                                       | Slow feedback loop                     | Medium     | Run e2e only on merge to main. Unit tests on every push. `--generate-only` enables validation without podman |
+| Build reproducibility aspirational                                      | "Same lockfile = same image" may not hold | Medium  | Container image reproducibility is notoriously hard (apt timestamps, network fetches, layer caching). Stated as acceptance criterion but not enforced. Deferred — note as aspirational, revisit when lockfile is stable |
+| Container rebuild latency                                               | Slow iteration when changing harness config | Medium | See §Caching Strategy. Layer ordering in Containerfile optimized for cache hits. No full mitigation yet |
+| Build time / CLI startup time                                           | User dissatisfaction                   | Low        | No mitigations yet. Risk is low for v1 (solo dev). Monitor if user base grows |
+
+## Decision Reversibility
+
+Consolidated view of key decisions and their cost to reverse. Informs risk management and investment sequencing.
+
+| Decision | Reversibility | Notes |
+|---|---|---|
+| TOML manifest format | Irreversible | All config depends on it (ADR-024) |
+| Array replace as merge default | Expensive | All layer content assumes this (ADR-006) |
+| Integer priority ordering | Expensive | All manifests assume numeric order (ADR-009) |
+| mergo for deep merge | Expensive | Composition algorithm, characterization tests, and custom transformer all bind to mergo's specific behavior. Replacing means re-verifying all merge semantics (ADR-004) |
+| Container-first isolation | Expensive | Every `afb.toml` change requires `afb rebuild`. Once workflows depend on containers, effectively irreversible (ADR-007) |
+| Podman only (v1) | Cheap | ContainerRuntime port exists for Docker (ADR-015) |
+| lefthook for hooks | Cheap | Swap for any git hook manager |
+| cobra for CLI | Cheap | Thin wiring in `cmd/afb/`. Core logic in `internal/`. Swapping changes ~10 files in `cmd/`, zero in domain |
+| LNAI for sync | Cheap | Single configurable shell command (ADR-002) |
+| text/template for generation | Cheap | Stdlib, no dep (ADR-026) |
+
+## External Dependencies
+
+| Dependency | Failure mode | Stability | Fallback |
+|---|---|---|---|
+| git CLI | Layer clone/push fails | Stable | None needed |
+| podman + podman-compose | Container build/lifecycle fails | Stable | Docker adapter v2 |
+| lnai | Sync command fails | Medium (239 stars) | Configurable `[sync].command` |
+| mergo | Merge edge cases | Stable (9k stars) | Custom transformer |
+| hadolint | Containerfile lint unavailable | Stable | Non-blocking skip |
 
 ## Future Work
 
 | Item                            | Phase                                  | Notes                                                                      |
 | ------------------------------- | -------------------------------------- | -------------------------------------------------------------------------- |
-| Gas City integration            | 3                                      | Install as component inside container. Evaluate pack overlap. Becomes entrypoint when ready |
+| Gas City integration            | User decision                          | Gas City is a user component, not an AFB dependency. Users may install it via `[components.gascity]`. No AFB plan phase depends on it |
 | Container registry              | 2                                      | Push images for cross-machine sharing without rebuild                      |
 | Multi-project compose           | 2                                      | Single compose file managing multiple project containers                   |
 | Handoff system                  | After memory                           | claude-handoff or similar, as component inside container                   |
@@ -1301,7 +1440,8 @@ Container logs are accessible via `podman-compose logs`. AFB doesn't capture or 
 **Reversibility**: **Expensive** — every layer configuration depends on this semantic. Changing after real users have layers = breaking change to all existing layer content.
 **Decision**: Incoming array replaces existing array entirely.
 **Rationale**: Predictable, avoids duplication bugs. Layers that want to extend must include the full list.
-**Reconsider when**: users consistently need array-append semantics and the workaround (include full list) is too painful.
+**Escape hatch added**: optional `merge_arrays = "append"` per layer. Default remains `replace`. Cost: one extra field in validation + one branch in merge logic. Cheaper to add now than after layers exist in the wild.
+**Reconsider when**: users consistently need per-file (not per-layer) array merge control.
 
 ### ADR-007: Container-first isolation
 
@@ -1473,12 +1613,36 @@ Container logs are accessible via `podman-compose logs`. AFB doesn't capture or 
 **Rationale**: Template looks like the output with `{{.Field}}` holes — readable, diffable, inspectable. Simpler than line-by-line string concatenation. Zero external dependencies (stdlib).
 **Consequences**: Template files are an additional artifact to maintain. Logic in templates should be minimal (loops and conditionals only, no complex expressions).
 
+### ADR-028: Idempotency check via per-file SHA-256
+
+**Status**: Accepted
+**Context**: `afb sync` must be idempotent — running it twice with no changes must produce byte-identical `.ai/` output. The idempotency check is both a Phase 5 acceptance test and a CI fitness function. Two candidates:
+
+| Method | How it works | Pros | Cons |
+|--------|-------------|------|------|
+| **Per-file SHA-256** | Walk `.ai/`, hash each file, sort by path, compare hash lists | Pinpoints which file changed. Debuggable. Reusable as a library function | Slightly more code |
+| **tar + hash** | `tar cf - .ai/ | sha256sum` | One-liner | Sensitive to metadata (mtime, permissions, ordering). tar output varies by platform. Opaque — if it fails, you don't know which file changed |
+
+**Decision**: Per-file SHA-256, sorted by relative path.
+**Rationale**: Debuggability wins. When idempotency breaks, you need to know *which* file changed, not just that something changed. Platform-independent (no tar metadata sensitivity). The hash list can be serialized for CI artifacts. Reusable in `afb diff` for composition drift detection.
+**Implementation**: Walk `.ai/` recursively, skip `.git/`, compute `sha256.Sum256` per file, sort entries by relative path, compare entry-by-entry. Report first difference with file path and both hashes.
+
+### ADR-027: Black-box acceptance tests via os/exec
+
+**Status**: Accepted
+**Reversibility**: Moderate — all acceptance tests depend on this convention.
+**Context**: Acceptance tests for a Go CLI can test at multiple levels: (a) call domain functions directly from test code, (b) call cobra command handlers in-process, (c) build binary and exercise via `os/exec`. Option (a) tests domain logic but not CLI wiring. Option (b) couples to cobra internals. Option (c) tests the actual user-facing binary end-to-end.
+**Decision**: All acceptance tests exercise the compiled `afb` binary as a black box via `os/exec`. A thin DSL package (`test/acceptance/harness/`) wraps CLI invocations to absorb output format changes.
+**Rationale**: Best practice for ATDD with Go CLIs — tests exactly what the user runs. Catches wiring bugs that in-process tests miss (wrong flag name, missing subcommand registration, exit code errors). The DSL layer prevents coupling to specific output strings. Go's `TestMain` can build the binary once per test suite.
+**Consequences**: Acceptance tests are slower than unit tests (process spawn per invocation). DSL package must be maintained alongside CLI changes. Binary must be built before acceptance tests run.
+**References**: Dave Farley's ATDD approach — test the system from the outside, through its public interface.
+
 ## Deferred Decisions
 
 | Decision | Current stance | Trigger to revisit |
 |----------|---------------|-------------------|
-| Shared services management | Convention (`~/afb-shared/` as regular afb project) | When >2 projects share services on same machine and convention causes friction |
-| Per-file merge strategy overrides | Per-layer only | When a user needs different merge strategies for different files within the same layer |
+| Shared services management | No built-in convention. User specifies own naming and directory organization for shared services. AFB is not opinionated about how users structure their harness (except: harnesses run in a container) | When multiple users independently arrive at conflicting conventions and request guidance |
+| Per-file merge strategy overrides | Per-layer only (`merge_arrays` field available) | When a user creates a layer solely to get different merge strategies for different files within the same layer |
 | Statistical process control metrics | Not tracked | When build/sync frequency data is available from structured logs |
 | AgentGateway config generation | Manual gateway config | When first shared MCP server is configured across project containers |
 | afb.local.toml deep merge | Shallow merge only (v1) | When a user needs to override a nested key without replacing the entire top-level table |
