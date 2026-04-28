@@ -62,7 +62,7 @@ Hooks are shell commands or paths to scripts. AFB expands manifest variables bef
 **No fixed `backup` or `health` hooks**: components define arbitrary named commands in `[components.NAME.commands]`, invoked via `afb run <component>.<command>`. Scripts in `.afb/scripts/` orchestrate multiple component commands (e.g., a `backups.sh` that calls `afb run cass.backup` then `afb run mcp-memory-service.backup`).
 
 **Commands that execute hooks**:
-- `afb sync` — includes component install if versions have drifted (lockfile vs manifest). Writes lockfile
+- `afb apply` — includes component install if versions have drifted (lockfile vs manifest). Writes lockfile
 - `afb lock` — resolves all versions, commit hashes, image digests. Writes `afb.lock`
 - `afb lock --check` — exits non-zero if lockfile is stale. For CI
 - `afb doctor` — runs `doctor` command for each component that defines one, plus lockfile and drift checks
@@ -81,7 +81,7 @@ Hooks are shell commands or paths to scripts. AFB expands manifest variables bef
 - Per-layer strategy override available (`merge` or `overwrite` for all files in that layer)
 - `.afb/project/` is the implicit highest-priority layer
 - `afb.local.toml` deep-merges over `afb.toml` using same rules. Processed after manifest, before layer composition. Gitignored
-- `afb sync` composes layers into `.ai/`, validates, then runs the configured sync command (default: `lnai sync`)
+- `afb apply` composes layers into `.ai/`, validates, then runs the configured sync command (default: `lnai sync`)
 
 ### FR3: Drift Detection
 
@@ -139,7 +139,7 @@ Components define arbitrary named commands in `[components.NAME.commands]`. User
 
 Validation runs AFTER compose but BEFORE the sync command. If validation fails, sync never runs, runtime configs are untouched.
 
-Can be invoked standalone. Also runs automatically inside `afb sync`.
+Can be invoked standalone. Also runs automatically inside `afb apply`.
 
 ### FR10: Container Build and Lifecycle
 
@@ -174,7 +174,7 @@ Remote harness management: user SSHes in, runs AFB locally on the remote machine
 
 | ID | Requirement |
 |----|-------------|
-| NFR1 | **Composability** — enabling/disabling a component + `afb sync` must not break the system and must leave no residue |
+| NFR1 | **Composability** — enabling/disabling a component + `afb apply` must not break the system and must leave no residue |
 | NFR2 | **Declarative** — `afb.toml` describes desired state; AFB converges reality to match |
 | NFR3 | **Lightweight** — single Go binary, no runtime dependencies beyond `git` and a container runtime (podman or docker) |
 | NFR4 | **Fast** — CLI operations complete in seconds |
@@ -221,9 +221,9 @@ AFB itself. The manifest + CLI. Gets built and dogfooded first.
 
 Architecture is successful when:
 
-1. Adding a runtime to a project = edit `.afb/project/config.yaml` + `afb sync`
+1. Adding a runtime to a project = edit `.afb/project/config.yaml` + `afb apply`
 2. Removing a component = set `enabled = false` in `afb.toml` + `afb rebuild` → no residue in new container
-3. Shared config change propagates via `afb layer pull` + `afb sync`
+3. Shared config change propagates via `afb layer pull` + `afb apply`
 4. Config drift detectable via `afb diff` (both composition and runtime levels)
 5. Fresh machine setup = clone project + `afb build` + `afb up` + restore named volumes from backup
 6. All stateful components have backup via `afb run <component>.backup`

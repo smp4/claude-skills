@@ -90,7 +90,7 @@ The `.ai/` directory is the primary integration surface between AFB (producer) a
 └── config.yaml
 ```
 
-AFB writes `.ai-format-version` during composition. LNAI's expected format is characterized by tests (see Test Strategy). If LNAI changes its expectations, the characterization tests break before users hit mysterious sync failures.
+AFB writes `.ai-format-version` during composition. `afb doctor` verifies that the format version in `.ai/` matches the version AFB expects — detecting stale or incompatible composed output. LNAI's expected format is characterized by tests (see Test Strategy). If LNAI changes its expectations, the characterization tests break before users hit mysterious sync failures.
 
 **Format version semantics**: the version tracks the directory structure and file semantics, not content. Version bump = structural change to what files exist or what they mean. Content within files is layer-driven and versioned by the layers themselves.
 
@@ -110,19 +110,19 @@ Three candidates evaluated for a Go CLI of this scope:
 
 ### Why Ports & Adapters
 
-AFB has 2 external tools that justify Go-level port interfaces:
+AFB has 3 external dependencies that justify Go-level port interfaces:
 - **Container runtime**: podman today, docker later (`[container].runtime`)
 - **Git**: shell out to `git` CLI (could become go-git later)
+- **Command execution**: sync command, validation, version hooks — `CommandExecutor` port enables unit-testing orchestration control flow without real subprocesses
 
 Other external tools use simpler mechanisms:
-- **Sync command**: swappable via `[sync].command` config field — config-level abstraction suffices, no Go interface needed
 - **Filesystem**: use `os` directly, test with `os.MkdirTemp`
 
 The architecture makes swappability structural where it matters and avoids ports that mirror stdlib 1:1. Go's implicit interfaces keep this lightweight — define the interface where it's consumed, not in a separate package.
 
 ### Port Definitions
 
-Only genuinely external/swappable dependencies get ports. Internal operations (filesystem, sync command shelling) use stdlib directly.
+Only genuinely external/swappable dependencies get ports. Internal operations (filesystem) use stdlib directly.
 
 ```go
 // Git operations — consumed by layer package
@@ -140,9 +140,14 @@ type ContainerRuntime interface {
     ComposeDown(composeFile string, project string) error
     ImageID(tag string) (string, error)
 }
+
+// Command execution — consumed by apply orchestrator, doctor, runner
+type CommandExecutor interface {
+    Run(ctx context.Context, cmd string, args []string, opts ExecOpts) (ExecResult, error)
+}
 ```
 
-**Sync command**: no port. The `[sync].command` config field already provides swappability — shelling out to a configurable string doesn't need a Go interface on top. Call `os/exec` directly.
+**Command execution** (sync command, validation, version hooks): port interface `CommandExecutor` enables unit-testing orchestration control flow (exit codes, validation-blocks-sync invariant) without real subprocesses. The sync command is also config-swappable via `[sync].command`, but the port is for testability of the orchestrator, not for swapping the command itself.
 
 **Filesystem**: no port. Use `os` directly. Unit-test composition with `os.MkdirTemp`. An FS abstraction that mirrors stdlib 1:1 is indirection without abstraction. Add a port if a genuine need emerges (e.g., remote storage).
 
@@ -153,19 +158,21 @@ type ContainerRuntime interface {
 | `Git` | `GitCLI` | Shells out to `git` binary | v1 |
 | `ContainerRuntime` | `PodmanRuntime` | Shells out to `podman` + `podman-compose` | v1 |
 | `ContainerRuntime` | `DockerRuntime` | Shells out to `docker` + `docker-compose` | v2 (port interface exists, adapter deferred) |
+| `CommandExecutor` | `ShellExecutor` | Shells out via `os/exec` | v1 |
 
 ### Dependency Wiring
 
 Cobra commands wire ports to adapters in `cmd/afb/`. No DI framework — constructor injection:
 
 ```go
-func newSyncCmd() *cobra.Command {
+func newApplyCmd() *cobra.Command {
     return &cobra.Command{
-        Use: "sync",
+        Use: "apply",
         RunE: func(cmd *cobra.Command, args []string) error {
             manifest := manifest.MustLoad("afb.toml")
             git := gitcli.New()
-            return sync.Run(manifest, git)
+            exec := shell.New()
+            return apply.Run(manifest, git, exec)
         },
     }
 }
@@ -198,12 +205,15 @@ afb/
 │   │       └── *_test.go
 │   ├── ports/                  # interface definitions (small file per port)
 │   │   ├── git.go
-│   │   └── runtime.go
+│   │   ├── runtime.go
+│   │   └── executor.go         # CommandExecutor port
 │   ├── adapters/               # external tool implementations
 │   │   ├── gitcli/
 │   │   │   └── git.go          # Git port via git CLI
-│   │   └── podman/
-│   │       └── runtime.go      # ContainerRuntime port via podman (v1)
+│   │   ├── podman/
+│   │   │   └── runtime.go      # ContainerRuntime port via podman (v1)
+│   │   └── shell/
+│   │       └── executor.go     # CommandExecutor port via os/exec
 │   ├── doctor/                 # afb doctor logic (traversal, checks)
 │   │   └── doctor.go
 │   ├── diff/                   # drift detection (both stages)
@@ -321,7 +331,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install AFB
 COPY --from=golang:1.23-bookworm /usr/local/go /usr/local/go
 ENV PATH="/usr/local/go/bin:${PATH}"
-RUN go install github.com/user/afb@v0.1.0
+RUN go install github.com/smp4/afb@${AFB_VERSION}
 
 # Install components (from afb.toml [components])
 RUN npm install -g lnai@0.6.91
@@ -342,7 +352,7 @@ WORKDIR /workspace
 # afb.toml and .afb/project/ are part of the cloned repo
 
 # Compose layers and sync
-RUN afb sync
+RUN afb apply
 
 # Runtime
 ENV AFB_LOG_LEVEL=info
@@ -507,6 +517,7 @@ This generates a volume mount in compose.yaml instead of the `git clone` step in
 
 ```toml
 schema_version = 1              # manifest schema version — enables future migration
+afb_version = "0.1.0"          # required AFB version — validated at startup, used for container install
 
 [settings]
 scripts_dir = ".afb/scripts"
@@ -655,6 +666,7 @@ Validation runs at parse time, before any operation proceeds:
 | Check | Error |
 |-------|-------|
 | `schema_version` missing or unsupported | "unsupported schema version N — this afb requires schema_version 1" |
+| `afb_version` incompatible with running binary | "manifest requires afb v0.2.0 but running v0.1.0 — update afb or change afb_version in manifest" |
 | Two layers with same `priority` integer | "layers 'base' and 'team' have duplicate priority 10" |
 | Component missing `install` field | "component 'foo' missing required field: install" |
 | Layer missing `source` field | "layer 'bar' missing required field: source" |
@@ -735,7 +747,7 @@ This handles the heterogeneity problem — npm packages have versions, brew pack
 |---------|-------------|
 | `afb lock` | Resolve all versions, commit hashes, image digests. Write `afb.lock` |
 | `afb lock --check` | Exit non-zero if lockfile is stale (for CI) |
-| `afb sync` | Compose + validate + sync + updates lockfile as side effect |
+| `afb apply` | Compose + validate + run sync command + updates lockfile as side effect |
 
 ## Layer Composition Algorithm
 
@@ -765,7 +777,7 @@ COMPOSE(manifest):
         ELSE:
             MERGE(dest, file, "merge")
 
-    # Atomic replace
+    # Atomic replace (see invariant below)
     remove .ai/ entirely
     move target → .ai/
 
@@ -780,6 +792,8 @@ MERGE(existing, incoming, strategy):
     ELSE:
         replace existing with incoming    # unstructured → overwrite
 ```
+
+**Atomic replacement invariant**: every `afb apply` deletes and recreates `.ai/` from scratch. No incremental updates. This is a deliberate simplification — correct by construction, no partial-state bugs. The trade-off: every future optimization (incremental composition, caching, parallel layer processing) requires redesigning this algorithm. **Trigger to reconsider**: when layer count or config tree size makes full recomposition noticeably slow (measured, not assumed). Until then, the simplicity wins.
 
 Cloning external git repos into `.afb/layers/` (which is gitignored) does not cause nested-repo errors — the outer git completely ignores gitignored directories. The inner repos have their own `.git/` dirs and work independently.
 
@@ -829,9 +843,9 @@ Stage 2 catches changes made directly by runtimes — e.g., Claude Code adding a
 | Command                 | What it does                                                                                                    |
 | ----------------------- | --------------------------------------------------------------------------------------------------------------- |
 | `afb init`              | Create `afb.toml` scaffold + `.afb/project/`. Add gitignore entries. Optional: `--template <source>[@ref]`     |
-| `afb sync`              | Pull layers → compose → `.ai/` → validate → run sync command → update lockfile                                 |
-| `afb sync --config`     | Config composition only (layers → compose → validate → sync command)                                           |
-| `afb sync --components` | Component install/update only                                                                                   |
+| `afb apply`              | Pull layers → compose → `.ai/` → validate → run sync command → update lockfile                                 |
+| `afb apply --config`     | Config composition only (layers → compose → validate → sync command)                                           |
+| `afb apply --components` | Component install/update only                                                                                   |
 | `afb lock`              | Resolve all versions and commit hashes. Write `afb.lock`                                                       |
 | `afb lock --check`      | Exit non-zero if lockfile stale. For CI                                                                        |
 | `afb build`             | Generate Containerfile + compose.yaml from manifest. Run `{runtime}-compose build`. `--strict` fails on error  |
@@ -865,11 +879,14 @@ Context-aware diagnostic command. Behavior depends on where it's called from.
 6. Report findings, recommend actions
 
 **Outside a project dir (host context)**:
-1. Check AFB prerequisites: podman/docker installed and version, compose tool installed, git installed
-2. Report versions and availability
-3. Recommend install actions if missing
+1. Check AFB prerequisites: podman/docker installed and version, compose tool installed (minimum version pinned), git installed
+2. Check `.ai-format-version` matches expected version (if `.ai/` exists)
+3. Report versions and availability
+4. Recommend install actions if missing
 
-### Command: `afb sync` (detailed)
+**Minimum versions enforced by doctor**: podman-compose >= 1.0.6 (known-good with used Compose Spec features). Pinned in CI setup.
+
+### Command: `afb apply` (detailed)
 
 ```
 1. Parse afb.toml (merge with afb.local.toml if present)
@@ -960,8 +977,8 @@ Core operations must satisfy these measurable criteria before v1:
 | Composition correctness | Composition with N layers produces expected file tree (golden-file tests) | 100% match |
 | Containerfile validity | Generated Containerfile passes hadolint | Zero errors (warnings allowed) |
 | Compose spec validity | Generated compose.yaml passes `podman-compose config` | Exit 0 |
-| Sync idempotency | `afb sync` run twice produces identical `.ai/` output | Byte-identical |
-| Build reproducibility | Same lockfile + same manifest = same image digest | Digest match |
+| Apply idempotency | `afb apply` run twice produces identical `.ai/` output | Byte-identical |
+| ~~Build reproducibility~~ | ~~Same lockfile + same manifest = same image digest~~ | ~~Digest match~~ (deferred to v2 — aspirational, not enforced) |
 | Unit test speed | `go test ./internal/domain/...` | < 5s |
 | Tier isolation | No unit test requires git, container runtime, or network | Zero external deps |
 
@@ -969,12 +986,14 @@ Core operations must satisfy these measurable criteria before v1:
 
 Automated checks that run in CI to prevent architectural drift:
 
-- **Composition idempotency**: CI job runs `afb sync` twice, computes SHA-256 of each file in `.ai/` (sorted by path), compares — any difference = failure. Structured as a dedicated CI job that (1) runs `afb sync`, (2) captures hashes, (3) runs `afb sync` again, (4) captures hashes, (5) asserts identical. See ADR-028
+- **Composition idempotency**: CI job runs `afb apply` twice, computes SHA-256 of each file in `.ai/` (sorted by path), compares — any difference = failure. Structured as a dedicated CI job that (1) runs `afb apply`, (2) captures hashes, (3) runs `afb apply` again, (4) captures hashes, (5) asserts identical. See ADR-028
 - **Containerfile lint**: hadolint on generated Containerfile — catches structural errors without building
 - **Compose validation**: `podman-compose config --quiet` on generated compose.yaml — catches spec violations
 - **Test tier isolation**: Enforced two ways: (a) CI job runs `go test ./internal/domain/...` inside a container image with no git/podman/network installed — if it fails, tier boundary is broken; (b) CI step greps for `os/exec` in `internal/domain/` — any match = failure (domain packages must not shell out)
 - **Domain package purity**: `internal/domain/` must have no imports of `os/exec` or adapter packages. Enforced by grep in CI: `grep -r 'os/exec\|internal/adapters' internal/domain/` must return empty
 - **Unit test speed**: CI step asserts `go test ./internal/domain/...` completes in < 5s. `time` wrapper + threshold check. Catches performance regressions
+- **Layer composition completeness**: CI job asserts all files in all layer dirs appear in `.ai/` after composition. Idempotency confirms run-2 == run-1; this confirms run-1 == expected
+- **Exit code contract**: CI job runs each error path and asserts the correct exit code per ADR-030. Prevents silently returning wrong codes in new error paths
 - **Conventional commits**: commit-msg hook regex via lefthook — enforced locally on every commit
 - **Lint clean**: golangci-lint in pre-commit hook + CI — prevents lint regressions
 
@@ -1063,7 +1082,11 @@ jobs:
       - run: go test -tags e2e ./...
 ```
 
-Podman-only for v1. Docker adapter and CI matrix deferred to v2. E2E tests tagged and slow — run on merge to main, not on every push.
+Podman-only for v1. Docker adapter and CI matrix deferred to v2. E2E tests tagged and slow — run on merge to main AND on every push to the release path (e2e must not be skipped on release).
+
+**CI dependency rule**: All GitHub Actions must come from established parties (e.g., `actions/*`, `docker/*`, `redhat-actions/*`) with version pins (SHA, not mutable tags). If no suitable action exists from an established party, use regular bash commands instead. No third-party actions from unknown authors.
+
+**CI setup requirements**: hadolint (for Containerfile linting), lnai (pinned version, for contract characterization tests), podman-compose (minimum version pinned).
 
 ### Limitations
 
@@ -1093,7 +1116,7 @@ afb.toml (authored, committed)
     │                                     │
     │                     ┌───────────────┤
     │                     ▼               ▼
-    │              afb build         afb sync
+    │              afb build         afb apply
     │                 │                   │
     │                 ▼                   ▼  sync command (lnai sync)
     │          .afb/generated/            │
@@ -1158,7 +1181,7 @@ podman exec -it <container> bash   # enter container, authenticate runtimes
 # runtime modifies its own config (e.g., adds MCP server via Claude Code)
 afb diff                    # what changed? (covers .ai/ AND runtime dirs)
 # user cherry-picks desired changes into .afb/project/ or a layer dir
-afb sync                    # recompose — reverts undesired drift, keeps adopted changes
+afb apply                   # recompose — reverts undesired drift, keeps adopted changes
 afb push team               # push layer changes upstream
 ```
 
@@ -1220,7 +1243,7 @@ When a user (or an LLM runtime) modifies config that the user wants to promote t
 1. `afb.toml` pins `[layers.team].ref = "v1.2.0"` (resolved to commit `abc123`)
 2. User edits files in `.afb/layers/team/` locally (e.g., LLM added an MCP server via its UI, user spotted it via `afb diff`, cherry-picked it into the team layer)
 3. `afb push team` pushes the change to the upstream layer repo → new commit `def456`
-4. **Gap**: `afb.toml` still says `ref = "v1.2.0"`. Next `afb sync` pulls the old pinned version, overwriting the just-pushed change
+4. **Gap**: `afb.toml` still says `ref = "v1.2.0"`. Next `afb apply` pulls the old pinned version, overwriting the just-pushed change
 5. **Secondary gap**: the container image was built with old layer content — it's now stale
 
 ### Solution: `afb push` updates the manifest pin
@@ -1241,11 +1264,11 @@ When a user (or an LLM runtime) modifies config that the user wants to promote t
 
 | Original ref | After push | Rationale |
 |---|---|---|
-| Mutable branch (`main`) | ref stays `main`, lockfile updated with new commit hash | Branch tracks HEAD. Next `afb sync --pull` gets the new content naturally |
+| Mutable branch (`main`) | ref stays `main`, lockfile updated with new commit hash | Branch tracks HEAD. Next `afb apply --pull` gets the new content naturally |
 | Pinned tag (`v1.2.0`) | ref updated to new commit hash. Warning: "ref was tag v1.2.0, now pinned to commit def456. Create a new tag if needed" | Tag is immutable. Push creates a new commit beyond the tag. User may want to tag the new commit |
 | Pinned commit hash (`abc123`) | ref updated to new commit hash `def456` | Explicit pin must be updated to stay consistent |
 
-**Why update afb.toml, not just lockfile?** The lockfile is generated — `afb sync` overwrites it. If we only update lockfile, the next sync reads the manifest's stale pin and pulls the old version. The manifest is the source of truth and must reflect the new state.
+**Why update afb.toml, not just lockfile?** The lockfile is generated — `afb apply` overwrites it. If we only update lockfile, the next sync reads the manifest's stale pin and pulls the old version. The manifest is the source of truth and must reflect the new state.
 
 **Consequence**: `afb push` modifies a committed file (`afb.toml`). This is intentional — the push is a deliberate act that changes the desired state. The user should commit the updated `afb.toml` alongside their next commit. `afb push` logs a reminder: "afb.toml updated — commit to persist the new layer pin."
 
@@ -1255,7 +1278,7 @@ After `afb push`, the container image is stale (built with old layer content). T
 
 For cross-machine consistency:
 - **Same machine**: `afb rebuild` after push. Immediate
-- **Other machines**: run `afb sync` (which runs `afb layer pull` if `--pull` flag or if layers missing) → gets new content via the updated ref → `afb rebuild`. Or pull the rebuilt image from a container registry if available
+- **Other machines**: run `afb apply` (which runs `afb layer pull` if `--pull` flag or if layers missing) → gets new content via the updated ref → `afb rebuild`. Or pull the rebuilt image from a container registry if available
 
 Container image tagging remains `afb-{dirname}:latest`. Content-addressable image tags (based on manifest + lockfile hash) deferred — adds complexity without clear need at solo-dev scale.
 
@@ -1268,7 +1291,7 @@ A common workflow: an LLM runtime modifies its own config (e.g., Claude Code add
 afb diff                           # spots runtime drift: .claude/settings.json changed
 # User inspects the change, decides to keep it
 # User copies the relevant config into .afb/project/ or a layer dir
-afb sync                           # recompose — adopted change now in .ai/
+afb apply                          # recompose — adopted change now in .ai/
 afb push team                      # push to upstream layer (if it went to a layer)
                                    # afb.toml pin updated automatically
 # On host
@@ -1291,7 +1314,7 @@ The generated Containerfile orders layers for maximum cache reuse:
 4. **Component installs** — changes when versions bump
 5. **Extra run commands** — changes occasionally
 6. **Project clone** — changes per commit
-7. **afb sync** — changes when config changes
+7. **afb apply** — changes when config changes
 
 Changing a component version invalidates layers 4-7 but preserves 1-3. Changing only project code invalidates only 6-7.
 
@@ -1309,7 +1332,7 @@ Changing a component version invalidates layers 4-7 but preserves 1-3. Changing 
 
 ### Unmitigated
 
-Harness config changes (adding/removing layers, changing merge strategy) always require a full `afb sync` + `afb rebuild`. No incremental composition yet — the atomic-replace design of `.ai/` means every sync recomputes from scratch. This is acceptable at current scale but could become a bottleneck with many layers or large config trees.
+Harness config changes (adding/removing layers, changing merge strategy) always require a full `afb apply` + `afb rebuild`. No incremental composition yet — the atomic-replace design of `.ai/` means every sync recomputes from scratch. This is acceptable at current scale but could become a bottleneck with many layers or large config trees.
 
 ## Observability
 
@@ -1333,7 +1356,7 @@ Container logs are accessible via `podman-compose logs`. AFB doesn't capture or 
 
 | Risk                                                                    | Impact                                 | Likelihood | Mitigation                                                                                                |
 | ----------------------------------------------------------------------- | -------------------------------------- | ---------- | --------------------------------------------------------------------------------------------------------- |
-| LNAI breaking changes or abandonment (239 stars)                        | `afb sync` breaks                      | Medium     | Pin version. Sync command is configurable — can swap                                                      |
+| LNAI breaking changes or abandonment (239 stars)                        | `afb apply` breaks                      | Medium     | Pin version. Sync command is configurable — can swap                                                      |
 | Deep merge produces invalid config                                      | Runtime reads bad config               | Medium     | `afb validate` after compose, before sync. `afb diff` for inspection                                      |
 | Component install hook fails in container                               | Component unavailable                  | High       | Log error + continue (or fail in --strict). Record failure in lockfile                                    |
 | Stdio MCP server sharing complexity                                     | MCP gateway adds moving parts          | Medium     | Start with in-container stdio for single-agent MCP. Graduate to AgentGateway when sharing needed          |
@@ -1347,6 +1370,8 @@ Container logs are accessible via `podman-compose logs`. AFB doesn't capture or 
 | AgentGateway breaking changes                                           | Shared MCP access breaks               | Low        | Pin version. Gateway is optional — fallback to in-container stdio                                         |
 | Lockfile can't track all component versions                             | Imperfect reproducibility              | Medium     | Best-effort: track what's trackable. Layers always get commit hashes. Document limitations                |
 | mergo zero-value override bug                                           | Empty/zero values silently not merged  | Medium     | Characterization tests before writing composition logic. Custom transformer if `WithOverwriteWithEmptyValue` unreliable |
+| Sync-command-version coupling in drift detection                        | `afb diff` Stage 2 result depends on sync command version — upgrading LNAI silently changes the diff baseline | Medium | Acknowledged. Pin LNAI version. Characterization tests catch regressions. Document that diff results are sync-command-version-dependent |
+| `RUN afb apply` bootstrap coupling                                      | AFB version inside container must be schema-compatible with manifest | High | `afb_version` field in manifest pins which AFB goes into the image. Schema version validated at startup. Incompatible version = clear error message |
 | E2E tests slow CI                                                       | Slow feedback loop                     | Medium     | Run e2e only on merge to main. Unit tests on every push. `--generate-only` enables validation without podman |
 | Build reproducibility aspirational                                      | "Same lockfile = same image" may not hold | Medium  | Container image reproducibility is notoriously hard (apt timestamps, network fetches, layer caching). Stated as acceptance criterion but not enforced. Deferred — note as aspirational, revisit when lockfile is stable |
 | Container rebuild latency                                               | Slow iteration when changing harness config | Medium | See §Caching Strategy. Layer ordering in Containerfile optimized for cache hits. No full mitigation yet |
@@ -1393,6 +1418,17 @@ Consolidated view of key decisions and their cost to reverse. Informs risk manag
 | Host harness management         | 3+                                     | `afb` on host lists running harness containers, attach commands            |
 | Continuous improvement metrics  | 4+                                     | Track build times, drift frequency. Couple with afb logging                |
 | HUD integration                 | 3                                      | Evaluate if Gas City subsumes workflow state machine                       |
+| Build reproducibility fitness function | 2                              | "Same lockfile + same manifest = same image digest." Hard problem (apt timestamps, network fetches). Deferred — not enforced in v1 |
+| CLI startup time fitness function | 2                                    | NFR4 says "seconds" — no measurement or CI enforcement yet               |
+| Cross-machine reproducibility   | 2                                      | Mac + Linux produce identical `.ai/` output. Acknowledged aspirational    |
+| Containerfile template decomposition | 2                                 | Single-stage template with growing conditionals. Decompose into composable sub-templates when it becomes a maintenance liability |
+| `afb.local.toml` deep merge     | 2                                      | Shallow merge is v1. Deep merge when nested key override needed           |
+| `afb migrate`                   | 2                                      | Schema migration tool. Required when schema_version > 1                  |
+| CLI surface stability fitness function | 2                               | Detect flag renames or subcommand renames between phases                 |
+| Binary size budget               | 2                                     | Go binaries grow monotonically. Set a threshold when user base grows     |
+| Security posture of generated Containerfile | 2                          | `extra_run` passes user-supplied content through. No fitness function distinguishes AFB-controlled vs user-supplied shell commands |
+| Extract LNAI as component       | 2                                      | LNAI is currently a core dependency but could be more consistently modeled as a component with version tracking |
+| Test DSL stability contract      | 2                                     | DSL protects against CLI changes but has no stability contract for its own API. Known constraint at solo-dev scale |
 
 ## Architecture Decision Records
 
@@ -1424,8 +1460,10 @@ Consolidated view of key decisions and their cost to reverse. Informs risk manag
 ### ADR-004: Deep merge via mergo library
 
 **Status**: Accepted
-**Decision**: Use `dario.cat/mergo` (9k+ stars) for recursive map merging.
+**Decision**: Use `dario.cat/mergo@v1.0.2` (9k+ stars) for recursive map merging. Version pinned.
 **Rationale**: Eliminates external tool dependencies and custom merge code.
+**Decision gate**: Spike (mergo characterization tests) runs before composition logic. If `WithOverwriteWithEmptyValue` proves unreliable for zero-value cases (empty string, 0, false), implement a custom `mergo.WithTransformers` for leaf override before proceeding.
+**Upgrade policy**: mergo version pinned in `go.mod`. Any version bump MUST re-run all characterization tests. Prevent accidental bumps: CI step asserts `go.sum` hash for mergo matches expected value. `go get -u` must not silently bump mergo.
 **Consequences**: Requires `mergo.WithOverride` and `mergo.WithOverwriteWithEmptyValue` for replace semantics. Budget test time for edge cases.
 
 ### ADR-005: Shell out to git CLI, not go-git
@@ -1450,6 +1488,7 @@ Consolidated view of key decisions and their cost to reverse. Informs risk manag
 **Decision**: Containers as the single isolation mechanism.
 **Rationale**: Eliminates dual-system complexity. Enables safe permissive mode. MCP sharing via compose networking. Image versioning for blue-green deployment. Podman provides rootless operation.
 **Consequences**: Requires podman or docker on host. Image build adds latency. OAuth auth per-container (mitigated by named volumes).
+**Known failure mode**: if the base image changes `HOME` (e.g., different base image user), the named volume mount path for auth tokens (`claude-auth:/home/node/.claude`) may silently break. Mitigation: Containerfile explicitly sets `HOME` and auth volume mount path is derived from the base image's user, not hardcoded.
 **Supersedes**: ADR-007 rev 1 (dual-tier HOME override + containers). `afb test` command (superseded by container isolation).
 
 ### ADR-008: .afb/project/ as authored config, .ai/ as composed output
@@ -1531,15 +1570,17 @@ Consolidated view of key decisions and their cost to reverse. Informs risk manag
 3. Stdio MCP servers shared across agents: run behind AgentGateway
 
 **Rationale**: Most mature (v1.0, Linux Foundation, 119 contributors). Runtime-agnostic — works with Podman. Supports all transports including Streamable HTTP (SSE deprecated). Tool federation aggregates multiple MCP servers behind a single endpoint.
+**Why not stdio-inside-container**: Tool federation is needed in v1 — AFB itself uses shared MCP servers (memory, CASS) across project containers. Stdio-inside-container only works for single-agent access. Gateway enables multiple project containers to share the same MCP server instances.
+**Why not skip entirely**: Shared MCP access is the point of LLM memory persistence across projects. Without a gateway, each container would need its own MCP server instances, defeating the shared-services architecture.
 **Note**: SSE transport is deprecated in MCP. New integrations should use Streamable HTTP.
 
 ### ADR-018: Ports & Adapters application architecture
 
 **Status**: Accepted (rev 2 — reduced port count)
-**Context**: AFB has 2 external dependencies that justify Go-level port interfaces (Git, ContainerRuntime). Other external tools (sync command, filesystem) use simpler mechanisms.
-**Decision**: Ports & Adapters (Hexagonal) architecture, kept lean. Ports only for genuinely swappable dependencies with multiple planned implementations. Core domain is pure logic. No port for sync command (config-level swappability suffices) or filesystem (stdlib is not an abstraction).
-**Rationale**: Makes swappability structural where it matters. Avoids interfaces that mirror stdlib 1:1. Go's implicit interfaces mean ports can be added later if needed.
-**Consequences**: Two ports (Git, ContainerRuntime). Unit tests use `os.MkdirTemp` for filesystem. Sync command tested via real execution in integration tier.
+**Context**: AFB has 3 external dependencies that justify Go-level port interfaces (Git, ContainerRuntime, CommandExecutor). Filesystem uses stdlib directly.
+**Decision**: Ports & Adapters (Hexagonal) architecture, kept lean. Ports for genuinely swappable dependencies or where testability requires injection. Core domain is pure logic.
+**Rationale**: Makes swappability structural where it matters. `CommandExecutor` port added to enable unit-testing orchestration control flow (exit code mapping, validation-blocks-sync invariant) without real subprocesses. Avoids interfaces that mirror stdlib 1:1.
+**Consequences**: Three ports (Git, ContainerRuntime, CommandExecutor). Unit tests use `os.MkdirTemp` for filesystem. Orchestration logic unit-testable via stub executor.
 
 ### ADR-019: No afb uninstall command
 
@@ -1603,6 +1644,7 @@ Consolidated view of key decisions and their cost to reverse. Informs risk manag
 **Decision**: `.ai/` is an explicit, versioned contract. AFB writes `.ai-format-version` (currently "1") during composition. Format documented in architecture. Characterized by tests against LNAI's expectations.
 **Rationale**: Low cost now (one file + tests). High cost to retrofit after mysterious sync failures.
 **Consequences**: Must maintain characterization tests against LNAI. Version bump on structural change.
+**Contingency**: If LNAI changes its `.ai/` expectations, update AFB's composition output to match. The characterization tests (Unit 5.5) are the early warning system. LNAI version is pinned; upgrades are deliberate.
 **References**: LNAI docs: https://lnai.sh/getting-started/introduction/, source: https://github.com/KrystianJonca/lnai
 
 ### ADR-026: text/template for container file generation
@@ -1616,7 +1658,7 @@ Consolidated view of key decisions and their cost to reverse. Informs risk manag
 ### ADR-028: Idempotency check via per-file SHA-256
 
 **Status**: Accepted
-**Context**: `afb sync` must be idempotent — running it twice with no changes must produce byte-identical `.ai/` output. The idempotency check is both a Phase 5 acceptance test and a CI fitness function. Two candidates:
+**Context**: `afb apply` must be idempotent — running it twice with no changes must produce byte-identical `.ai/` output. The idempotency check is both a Phase 5 acceptance test and a CI fitness function. Two candidates:
 
 | Method | How it works | Pros | Cons |
 |--------|-------------|------|------|
@@ -1637,6 +1679,43 @@ Consolidated view of key decisions and their cost to reverse. Informs risk manag
 **Consequences**: Acceptance tests are slower than unit tests (process spawn per invocation). DSL package must be maintained alongside CLI changes. Binary must be built before acceptance tests run.
 **References**: Dave Farley's ATDD approach — test the system from the outside, through its public interface.
 
+### ADR-029: Sync command executes inside container
+
+**Status**: Accepted
+**Reversibility**: Expensive — determines path resolution, test fixtures, user workflows for `afb doctor` and `afb diff`.
+**Context**: `afb apply`, `afb doctor`, and `afb diff` all run the sync command. Two execution contexts possible: (a) inside the container (where runtime configs live), (b) on the host (where the manifest lives). Option (b) requires either mounting the project dir or SSH-ing into containers.
+**Decision**: All AFB operations that touch runtime configs run inside the container. `afb doctor` and `afb diff` run from within a project directory inside the container.
+**Rationale**: Runtime configs (`.claude/`, `.opencode/`, `.mcp.json`) exist inside the container. Drift detection must compare against actual runtime state, which is container-local. Running on host would require volume mounts or remote execution for every diagnostic.
+**Alternatives not taken**: (a) Host-side doctor with volume mounts — adds mount complexity, can't detect runtime self-modifications. (b) Docker/Podman exec from host — couples to container runtime, can't run without a running container.
+**Consequences**: All path resolution in AFB assumes container filesystem. Test fixtures must simulate container-like directory structures.
+
+### ADR-030: Exit code scheme
+
+**Status**: Accepted
+**Reversibility**: Moderate — scripts and CI pipelines depend on exit codes. Changing is a breaking change.
+**Decision**: Standardized exit codes across all commands:
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| 1 | Composition error |
+| 2 | Validation error |
+| 3 | Sync command error |
+| 4 | Component install error |
+
+**Rationale**: Distinct exit codes enable CI pipelines and scripts to react differently to different failure modes (e.g., retry on sync command error, alert on validation error).
+**Consequences**: All error paths must map to the correct exit code. Fitness function enforces this (see Test Strategy).
+
+### ADR-031: `afb.local.toml` shallow merge semantics
+
+**Status**: Accepted
+**Reversibility**: Moderate-to-expensive if users build workflows depending on shallow merge behavior.
+**Context**: `afb.local.toml` overrides `afb.toml`. Two merge strategies: shallow (top-level table replaces) or deep (recursive key-level merge).
+**Decision**: Shallow merge for v1. Top-level TOML tables in `afb.local.toml` replace corresponding tables in `afb.toml` entirely.
+**Rationale**: Fast path to dogfooding. Solo dev, single user. All current use cases are flat scalar overrides (`mount_workspace`, `strict`). Deep merge adds complexity and edge cases not justified by current needs.
+**Consequences**: Overriding one field in a section requires reproducing the entire section. When base manifest adds new fields to a section that the user overrides locally, those fields are silently dropped.
+**Trigger for deep merge**: When a user needs to override a nested key without replacing the entire top-level table. Expected to occur during dogfooding — tracked in future work.
+
 ## Deferred Decisions
 
 | Decision | Current stance | Trigger to revisit |
@@ -1644,7 +1723,7 @@ Consolidated view of key decisions and their cost to reverse. Informs risk manag
 | Shared services management | No built-in convention. User specifies own naming and directory organization for shared services. AFB is not opinionated about how users structure their harness (except: harnesses run in a container) | When multiple users independently arrive at conflicting conventions and request guidance |
 | Per-file merge strategy overrides | Per-layer only (`merge_arrays` field available) | When a user creates a layer solely to get different merge strategies for different files within the same layer |
 | Statistical process control metrics | Not tracked | When build/sync frequency data is available from structured logs |
-| AgentGateway config generation | Manual gateway config | When first shared MCP server is configured across project containers |
+| AgentGateway config generation | Manual gateway config | After Dogfood Milestone 2. Shared MCP access is needed — implement config generation post-Phase 5 |
 | afb.local.toml deep merge | Shallow merge only (v1) | When a user needs to override a nested key without replacing the entire top-level table |
 | Docker adapter | Deferred to v2 | User request or deployment target requiring Docker |
 | `afb shell` command | Deferred to v2 | When AFB needs to discover and manage running harness containers from host |

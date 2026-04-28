@@ -24,13 +24,28 @@ Terms used throughout AFB documentation and code. Canonical definitions. If a te
 
 | Term | Definition | CLI command |
 |------|-----------|-------------|
-| **Compose** | Merge layers by priority into a single config directory (`.ai/`). Higher priority wins on conflict | Part of `afb sync` |
-| **Sync** | Compose layers, validate, then run the configured sync command (default: `lnai sync`) to translate `.ai/` into target-native configs. Updates lockfile | `afb sync` |
+| **Init** | Scaffold a new project: create `afb.toml`, `.afb/project/`, gitignore entries. Optionally from a template | `afb init` |
+| **Compose** | Merge layers by priority into a single config directory (`.ai/`). Higher priority wins on conflict. Standalone operation, also part of Apply | `afb compose` |
+| **Apply** | Compose layers, validate, then run the configured sync command (default: `lnai sync`) to translate `.ai/` into target-native configs. Updates lockfile. The full declarative pipeline | `afb apply` |
 | **Build** | Generate Containerfile + compose.yaml from manifest, then build the container image | `afb build` |
+| **Up** | Start containers from built image via compose | `afb up` |
+| **Down** | Stop and remove containers via compose | `afb down` |
+| **Rebuild** | Build + down + up. Convenience command for applying manifest changes to running containers | `afb rebuild` |
 | **Lock** | Resolve exact versions, commit hashes, and image digests. Write to `afb.lock` | `afb lock` |
-| **Doctor** | Diagnostic check. Inside a project: check lockfile sync, config drift, run component doctor commands. On host: check AFB prerequisites | `afb doctor` |
+| **Doctor** | Diagnostic check. Inside a project: check lockfile freshness, config drift, run component doctor commands. On host: check AFB prerequisites | `afb doctor` |
 | **Diff** | Detect divergence between declared state and actual state at two levels: composition drift and runtime drift | `afb diff` |
-| **Validate** | Check manifest schema validity and composed `.ai/` directory validity (delegates to `lnai validate`). Runs after compose, before sync | `afb validate` |
+| **Validate** | Check manifest schema validity and composed `.ai/` directory validity (delegates to `lnai validate`). Runs after compose, before the sync command | `afb validate` |
+| **Run** | Execute a script from `.afb/scripts/` or a component command (`component.command` format) | `afb run` |
+| **Push** | Push changes in layer dir(s) to upstream git, update manifest pin | `afb push` |
+| **Layer Pull** | Git pull in specified (or all) layer dirs. Respects `ref` pin | `afb layer pull` |
+
+### Terminology: Apply vs Sync Command
+
+**Apply** (`afb apply`) is AFB's operation: compose + validate + run sync command + update lockfile.
+
+**Sync command** refers to the external tool configured in `[sync].command` (default: `lnai sync`). It translates composed `.ai/` into runtime-native formats. The sync command is one step within Apply — not the same thing.
+
+Use "apply" for AFB's operation, "sync command" for the external tool invocation.
 
 ## Artifacts
 
@@ -52,7 +67,7 @@ Terms used throughout AFB documentation and code. Canonical definitions. If a te
 A harness progresses through:
 
 ```
-init → lock → sync → build → up
+init → lock → apply → build → up
                 ↑              ↓
                 └── rebuild ←──┘
 ```
@@ -61,7 +76,7 @@ init → lock → sync → build → up
 |-------|---------|
 | **Initialized** | Manifest exists, no lockfile or composed config yet |
 | **Locked** | Lockfile generated, exact versions resolved |
-| **Synced** | Layers composed, config translated to target formats |
+| **Applied** | Layers composed, config translated to target formats |
 | **Built** | Container image generated and built |
 | **Running** | Container(s) up and accessible |
 
@@ -82,7 +97,7 @@ init → lock → sync → build → up
 
 | Term | Definition |
 |------|-----------|
-| **Port** | Go interface defining how AFB interacts with an external dependency (git, container runtime, sync command). Defined where consumed |
+| **Port** | Go interface defining how AFB interacts with an external dependency (git, container runtime, command executor). Defined where consumed |
 | **Adapter** | Concrete implementation of a port (e.g., `GitCLI` implements the `Git` port by shelling out to the `git` binary) |
 | **Core** | Pure domain logic — manifest parsing, layer composition, merge, Containerfile generation. No external dependencies |
 
@@ -108,7 +123,7 @@ Things AFB is NOT:
 
 | Not this | That's the job of |
 |----------|-------------------|
-| Config translator | LNAI (or successor sync command) |
+| Config translator | Sync command — LNAI (or successor) |
 | Container orchestrator | podman-compose / docker-compose |
 | Memory system | MCP servers (CASS, mcp-memory-service) |
 | Agent orchestrator | Gas City (future) |
